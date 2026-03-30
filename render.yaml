@@ -1,0 +1,21 @@
+# Blueprint: https://render.com/docs/blueprint-spec
+# After deploy: set VITE_API_ORIGIN on Vercel to this service URL (no trailing slash).
+
+services:
+  - type: web
+    name: codearena-api
+    runtime: docker
+    region: frankfurt
+    plan: free
+    dockerfilePath: ./Server/Dockerfile
+    dockerContext: ./Server
+    healthCheckPath: /api/tasks
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
