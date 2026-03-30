@@ -1,0 +1,5 @@
+CodeArena/Server/node_modules/
+CodeArena/Server/pass.env
+CodeArena/ClientApp/node_modules/
+CodeArena/ClientApp/dist/
+

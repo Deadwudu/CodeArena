@@ -1,0 +1,93 @@
+import React, {useEffect, useState} from 'react';
+import type {ApiUser, AuthMode, Screen} from './types';
+import {Sidebar} from './components/Sidebar';
+import {TopBar} from './components/TopBar';
+import {MobileNav} from './components/MobileNav';
+import {TasksScreen} from './screens/TasksScreen';
+import {SolveScreen} from './screens/SolveScreen';
+import {AttemptsScreen} from './screens/AttemptsScreen';
+import {AdminScreen} from './screens/AdminScreen';
+import {AuthScreen} from './screens/AuthScreen';
+import {loadUser, saveUser} from './storage';
+
+export default function App() {
+  const [currentScreen, setCurrentScreen] = useState<Screen>('tasks');
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [user, setUser] = useState<ApiUser | null>(null);
+  const [search, setSearch] = useState('');
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
+
+  const goAuth = (mode: AuthMode) => {
+    setAuthMode(mode);
+    setCurrentScreen('auth');
+  };
+
+  useEffect(() => {
+    setUser(loadUser());
+  }, []);
+
+  useEffect(() => {
+    saveUser(user);
+  }, [user]);
+
+  const openTask = (id: string) => {
+    setSelectedTaskId(id);
+    setCurrentScreen('solve');
+  };
+
+  const signOut = () => setUser(null);
+
+  const renderScreen = () => {
+    switch (currentScreen) {
+      case 'tasks':
+        return <TasksScreen search={search} onOpenTask={openTask} />;
+      case 'solve':
+        return <SolveScreen taskId={selectedTaskId} user={user} onGoToTask={openTask} />;
+      case 'attempts':
+        return <AttemptsScreen search={search} onOpenTask={openTask} user={user} />;
+      case 'admin':
+        return <AdminScreen user={user} />;
+      case 'auth':
+        return <AuthScreen user={user} onUser={setUser} mode={authMode} onModeChange={setAuthMode} />;
+      default:
+        return <TasksScreen search={search} onOpenTask={openTask} />;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background text-on-surface font-body selection:bg-primary selection:text-on-primary-container">
+      <Sidebar
+        currentScreen={currentScreen}
+        onScreenChange={(s) => {
+          if (s === 'auth') setAuthMode('login');
+          setCurrentScreen(s);
+        }}
+        user={user}
+      />
+
+      <main className="md:ml-64 min-h-screen flex flex-col pb-16 md:pb-0">
+        <TopBar
+          currentScreen={currentScreen}
+          onScreenChange={setCurrentScreen}
+          user={user}
+          onSignOut={signOut}
+          search={search}
+          onSearchChange={setSearch}
+          onAuthLogin={() => goAuth('login')}
+          onAuthRegister={() => goAuth('register')}
+        />
+
+        <div className="flex-1 overflow-x-hidden custom-scrollbar">{renderScreen()}</div>
+      </main>
+
+      <MobileNav
+        currentScreen={currentScreen}
+        onScreenChange={(s) => {
+          if (s === 'auth') setAuthMode('login');
+          setCurrentScreen(s);
+        }}
+        user={user}
+      />
+    </div>
+  );
+}
