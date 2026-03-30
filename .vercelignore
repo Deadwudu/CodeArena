@@ -1,0 +1,6 @@
+ClientApp/node_modules
+Server/node_modules
+Server/database.db
+**/pass.env
+**/.env
+**/.env.*

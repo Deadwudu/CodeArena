@@ -1,0 +1,5 @@
+{
+  "name": "codearena",
+  "private": true,
+  "description": "Фронт: ClientApp (Vite/React). Бэк: Server (Express). Корневой vercel.json — для деплоя без подпапки."
+}

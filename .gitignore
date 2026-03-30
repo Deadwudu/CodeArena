@@ -1,5 +1,7 @@
-CodeArena/Server/node_modules/
-CodeArena/Server/pass.env
-CodeArena/ClientApp/node_modules/
-CodeArena/ClientApp/dist/
+Server/node_modules/
+Server/pass.env
+ClientApp/node_modules/
+ClientApp/dist/
 
+.vercel
+*.log
