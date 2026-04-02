@@ -8,6 +8,7 @@ import {SolveScreen} from './screens/SolveScreen';
 import {AttemptsScreen} from './screens/AttemptsScreen';
 import {AdminScreen} from './screens/AdminScreen';
 import {AuthScreen} from './screens/AuthScreen';
+import {TournamentsScreen} from './screens/TournamentsScreen';
 import {loadUser, saveUser} from './storage';
 
 export default function App() {
@@ -49,6 +50,8 @@ export default function App() {
         return <AdminScreen user={user} />;
       case 'auth':
         return <AuthScreen user={user} onUser={setUser} mode={authMode} onModeChange={setAuthMode} />;
+      case 'tournaments':
+        return <TournamentsScreen user={user} />;
       default:
         return <TasksScreen search={search} onOpenTask={openTask} />;
     }

@@ -215,3 +215,69 @@ create policy codearena_api_attempt_statuses on public.attempt_statuses for all 
 
 drop policy if exists codearena_api_attempts on public.attempts;
 create policy codearena_api_attempts on public.attempts for all using (true) with check (true);
+
+-- ---------------------------------------------------------------------------
+-- Турниры (задачи задаёт админ вручную, без автопроверки)
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.tournaments (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  status text not null default 'pending' check (status in ('pending', 'live', 'finished')),
+  created_by uuid not null references public.users(id),
+  started_at timestamptz,
+  finished_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.tournament_tasks (
+  id uuid primary key default gen_random_uuid(),
+  tournament_id uuid not null references public.tournaments(id) on delete cascade,
+  sort_order int not null,
+  title text not null,
+  description text not null,
+  unique (tournament_id, sort_order)
+);
+
+create table if not exists public.tournament_participants (
+  id uuid primary key default gen_random_uuid(),
+  tournament_id uuid not null references public.tournaments(id) on delete cascade,
+  user_id uuid not null references public.users(id) on delete cascade,
+  current_task_index int not null default 0,
+  completed_at timestamptz,
+  joined_at timestamptz not null default now(),
+  unique (tournament_id, user_id)
+);
+
+create table if not exists public.tournament_submissions (
+  id bigint generated always as identity primary key,
+  tournament_id uuid not null references public.tournaments(id) on delete cascade,
+  tournament_task_id uuid not null references public.tournament_tasks(id) on delete cascade,
+  user_id uuid not null references public.users(id) on delete cascade,
+  source_code text not null,
+  review_status text not null default 'pending' check (review_status in ('pending', 'PASS', 'FAIL')),
+  submitted_at timestamptz not null default now(),
+  reviewed_at timestamptz,
+  reviewed_by uuid references public.users(id),
+  unique (tournament_task_id, user_id)
+);
+
+create index if not exists idx_tournament_submissions_tournament_submitted
+  on public.tournament_submissions(tournament_id, submitted_at desc);
+
+alter table public.tournaments enable row level security;
+alter table public.tournament_tasks enable row level security;
+alter table public.tournament_participants enable row level security;
+alter table public.tournament_submissions enable row level security;
+
+drop policy if exists codearena_api_tournaments on public.tournaments;
+create policy codearena_api_tournaments on public.tournaments for all using (true) with check (true);
+
+drop policy if exists codearena_api_tournament_tasks on public.tournament_tasks;
+create policy codearena_api_tournament_tasks on public.tournament_tasks for all using (true) with check (true);
+
+drop policy if exists codearena_api_tournament_participants on public.tournament_participants;
+create policy codearena_api_tournament_participants on public.tournament_participants for all using (true) with check (true);
+
+drop policy if exists codearena_api_tournament_submissions on public.tournament_submissions;
+create policy codearena_api_tournament_submissions on public.tournament_submissions for all using (true) with check (true);

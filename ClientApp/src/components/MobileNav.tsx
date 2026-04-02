@@ -1,5 +1,5 @@
 import React from 'react';
-import {BarChart3, LogIn, Shield, Terminal, Trophy} from 'lucide-react';
+import {BarChart3, LogIn, Medal, Shield, Terminal, Trophy} from 'lucide-react';
 import type {ApiUser, Screen} from '../types';
 import {cn} from '../lib/utils';
 
@@ -12,6 +12,7 @@ interface MobileNavProps {
 export const MobileNav: React.FC<MobileNavProps> = ({currentScreen, onScreenChange, user}) => {
   const items: Array<{id: Screen; icon: React.ComponentType<{className?: string}>; label: string; hidden?: boolean}> = [
     {id: 'tasks', icon: Trophy, label: 'Задачи'},
+    {id: 'tournaments', icon: Medal, label: 'Турниры'},
     {id: 'solve', icon: Terminal, label: 'Код'},
     {id: 'attempts', icon: BarChart3, label: 'Попытки'},
     {id: 'admin', icon: Shield, label: 'Админ', hidden: user?.role !== 'admin'},

@@ -1,4 +1,35 @@
-export type Screen = 'tasks' | 'solve' | 'attempts' | 'admin' | 'auth';
+export type Screen = 'tasks' | 'solve' | 'attempts' | 'admin' | 'auth' | 'tournaments';
+
+export type TournamentStatus = 'pending' | 'live' | 'finished';
+
+export interface TournamentListItem {
+  id: string;
+  name: string;
+  status: TournamentStatus;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  taskCount: number;
+}
+
+export interface TournamentTaskPayload {
+  id: string;
+  sortOrder?: number;
+  title: string;
+  description: string;
+}
+
+export interface TournamentDetail {
+  id: string;
+  name: string;
+  status: TournamentStatus;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  taskCount: number;
+  tasks: TournamentTaskPayload[];
+  tasksHiddenUntilLive?: boolean;
+}
 
 export type AuthMode = 'login' | 'register';
 

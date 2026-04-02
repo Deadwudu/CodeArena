@@ -24,6 +24,17 @@ function mapTask(row) {
     }
 }
 
+const DIFFICULTY_ORDER = { easy: 0, medium: 1, hard: 2 }
+
+function sortTasksByDifficultyThenTitle(tasks) {
+    return [...tasks].sort((a, b) => {
+        const da = DIFFICULTY_ORDER[a.difficulty] ?? 99
+        const db = DIFFICULTY_ORDER[b.difficulty] ?? 99
+        if (da !== db) return da - db
+        return String(a.title).localeCompare(String(b.title), "ru")
+    })
+}
+
 function mapAttempt(row) {
     return {
         id: row.id,
@@ -137,9 +148,8 @@ app.get("/api/tasks", async (req, res) => {
         const { data, error } = await supabase
             .from("tasks")
             .select("id, title, description, difficulty_code, categories(name)")
-            .order("id", { ascending: true })
         if (error) throw error
-        res.json((data ?? []).map(mapTask))
+        res.json(sortTasksByDifficultyThenTitle((data ?? []).map(mapTask)))
     } catch (e) {
         res.status(500).json({ error: e?.message ?? "db error" })
     }
@@ -588,6 +598,542 @@ app.patch("/api/admin/attempts/:attemptId", async (req, res) => {
         }
 
         const { error } = await supabase.from("attempts").update({ status_code: status }).eq("id", attemptId)
+        if (error) throw error
+        res.json({ success: true, status })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+// --- Турниры (ручная проверка, задачи задаёт админ) ---
+
+async function getOrderedTournamentTasks(tournamentId) {
+    const { data, error } = await supabase
+        .from("tournament_tasks")
+        .select("id, title, description, sort_order")
+        .eq("tournament_id", tournamentId)
+        .order("sort_order", { ascending: true })
+    if (error) throw error
+    return data ?? []
+}
+
+app.post("/api/admin/tournaments", async (req, res) => {
+    try {
+        const { userId } = req.body
+        if (!(await ensureAdmin(userId))) {
+            res.status(403).json({ error: "no access" })
+            return
+        }
+        const name = String(req.body.name ?? "").trim()
+        let tasksIn = req.body.tasks
+        if (!name) {
+            res.status(400).json({ error: "Название турнира обязательно" })
+            return
+        }
+        if (typeof tasksIn === "string") {
+            try {
+                tasksIn = JSON.parse(tasksIn)
+            } catch {
+                res.status(400).json({ error: "tasks: невалидный JSON" })
+                return
+            }
+        }
+        if (!Array.isArray(tasksIn) || tasksIn.length === 0) {
+            res.status(400).json({ error: "Добавьте хотя бы одну задачу (title, description)" })
+            return
+        }
+        for (let i = 0; i < tasksIn.length; i++) {
+            const t = tasksIn[i]
+            if (!t || typeof t !== "object" || !String(t.title ?? "").trim() || !String(t.description ?? "").trim()) {
+                res.status(400).json({ error: `Задача ${i + 1}: нужны title и description` })
+                return
+            }
+        }
+
+        const { data: tour, error: tErr } = await supabase
+            .from("tournaments")
+            .insert({
+                name,
+                status: "pending",
+                created_by: userId,
+            })
+            .select("id, name, status, created_by, started_at, finished_at, created_at")
+            .maybeSingle()
+        if (tErr) throw tErr
+
+        const taskRows = tasksIn.map((t, i) => ({
+            tournament_id: tour.id,
+            sort_order: i,
+            title: String(t.title).trim(),
+            description: String(t.description).trim(),
+        }))
+        const { error: insErr } = await supabase.from("tournament_tasks").insert(taskRows)
+        if (insErr) throw insErr
+
+        res.json({ success: true, tournament: tour })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.post("/api/admin/tournaments/:id/go-live", async (req, res) => {
+    try {
+        const { userId } = req.body
+        if (!(await ensureAdmin(userId))) {
+            res.status(403).json({ error: "no access" })
+            return
+        }
+        const id = req.params.id
+        const { data: tour, error: fErr } = await supabase.from("tournaments").select("id, status").eq("id", id).maybeSingle()
+        if (fErr) throw fErr
+        if (!tour) {
+            res.status(404).json({ error: "турнир не найден" })
+            return
+        }
+        if (tour.status !== "pending") {
+            res.status(400).json({ error: "Турнир уже запущен или завершён" })
+            return
+        }
+        const { error } = await supabase
+            .from("tournaments")
+            .update({ status: "live", started_at: new Date().toISOString() })
+            .eq("id", id)
+        if (error) throw error
+        res.json({ success: true })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.post("/api/admin/tournaments/:id/finish", async (req, res) => {
+    try {
+        const { userId } = req.body
+        if (!(await ensureAdmin(userId))) {
+            res.status(403).json({ error: "no access" })
+            return
+        }
+        const id = req.params.id
+        const { error } = await supabase
+            .from("tournaments")
+            .update({ status: "finished", finished_at: new Date().toISOString() })
+            .eq("id", id)
+            .in("status", ["pending", "live"])
+        if (error) throw error
+        res.json({ success: true })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.get("/api/tournaments", async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from("tournaments")
+            .select("id, name, status, started_at, finished_at, created_at")
+            .order("created_at", { ascending: false })
+        if (error) throw error
+        const rows = data ?? []
+        const ids = rows.map((r) => r.id)
+        let taskCounts = new Map()
+        if (ids.length) {
+            const { data: tc } = await supabase.from("tournament_tasks").select("tournament_id").in("tournament_id", ids)
+            for (const t of tc ?? []) {
+                taskCounts.set(t.tournament_id, (taskCounts.get(t.tournament_id) ?? 0) + 1)
+            }
+        }
+        res.json(
+            rows.map((r) => ({
+                id: r.id,
+                name: r.name,
+                status: r.status,
+                startedAt: r.started_at,
+                finishedAt: r.finished_at,
+                createdAt: r.created_at,
+                taskCount: taskCounts.get(r.id) ?? 0,
+            })),
+        )
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.get("/api/tournaments/:id", async (req, res) => {
+    try {
+        const id = req.params.id
+        const adminId = req.query.adminUserId ? String(req.query.adminUserId).trim() : ""
+        const isAdmin = adminId ? await ensureAdmin(adminId) : false
+
+        const { data: tour, error: tErr } = await supabase.from("tournaments").select("*").eq("id", id).maybeSingle()
+        if (tErr) throw tErr
+        if (!tour) {
+            res.status(404).json({ error: "не найден" })
+            return
+        }
+
+        const tasks = await getOrderedTournamentTasks(id)
+        const hideBodies = tour.status === "pending" && !isAdmin
+        res.json({
+            id: tour.id,
+            name: tour.name,
+            status: tour.status,
+            startedAt: tour.started_at,
+            finishedAt: tour.finished_at,
+            createdAt: tour.created_at,
+            taskCount: tasks.length,
+            tasks: hideBodies
+                ? []
+                : tasks.map((t) => ({
+                      id: t.id,
+                      sortOrder: t.sort_order,
+                      title: t.title,
+                      description: t.description,
+                  })),
+            tasksHiddenUntilLive: hideBodies,
+        })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.post("/api/tournaments/:id/join", async (req, res) => {
+    try {
+        const tournamentId = req.params.id
+        const userId = req.body.userId ? String(req.body.userId).trim() : ""
+        if (!userId) {
+            res.status(400).json({ error: "userId обязателен" })
+            return
+        }
+
+        const { data: tour, error: tErr } = await supabase.from("tournaments").select("id, status").eq("id", tournamentId).maybeSingle()
+        if (tErr) throw tErr
+        if (!tour) {
+            res.status(404).json({ error: "турнир не найден" })
+            return
+        }
+        if (tour.status === "finished") {
+            res.status(400).json({ error: "Турнир завершён" })
+            return
+        }
+
+        const { data: existing } = await supabase
+            .from("tournament_participants")
+            .select("id")
+            .eq("tournament_id", tournamentId)
+            .eq("user_id", userId)
+            .maybeSingle()
+        if (!existing) {
+            const { error } = await supabase.from("tournament_participants").insert({
+                tournament_id: tournamentId,
+                user_id: userId,
+            })
+            if (error) throw error
+        }
+        res.json({ success: true })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.get("/api/tournaments/:id/play", async (req, res) => {
+    try {
+        const tournamentId = req.params.id
+        const userId = req.query.userId ? String(req.query.userId).trim() : ""
+        if (!userId) {
+            res.status(400).json({ error: "userId обязателен" })
+            return
+        }
+
+        const { data: tour, error: tErr } = await supabase.from("tournaments").select("id, status, name").eq("id", tournamentId).maybeSingle()
+        if (tErr) throw tErr
+        if (!tour) {
+            res.status(404).json({ error: "турнир не найден" })
+            return
+        }
+
+        const { data: part, error: pErr } = await supabase
+            .from("tournament_participants")
+            .select("id, current_task_index, completed_at")
+            .eq("tournament_id", tournamentId)
+            .eq("user_id", userId)
+            .maybeSingle()
+        if (pErr) throw pErr
+        if (!part) {
+            res.status(403).json({ error: "Сначала присоединитесь к турниру" })
+            return
+        }
+
+        if (part.completed_at) {
+            res.json({ phase: "done", tournamentName: tour.name, completedAt: part.completed_at })
+            return
+        }
+
+        if (tour.status === "pending") {
+            res.json({ phase: "waiting", tournamentName: tour.name, message: "Ожидание старта турнира администратором" })
+            return
+        }
+
+        if (tour.status === "finished") {
+            res.json({ phase: "finished", tournamentName: tour.name, message: "Турнир завершён" })
+            return
+        }
+
+        const ordered = await getOrderedTournamentTasks(tournamentId)
+        const idx = part.current_task_index
+        if (idx >= ordered.length) {
+            res.json({
+                phase: "await_complete",
+                tournamentName: tour.name,
+                taskCount: ordered.length,
+            })
+            return
+        }
+
+        const cur = ordered[idx]
+        res.json({
+            phase: "task",
+            tournamentName: tour.name,
+            taskIndex: idx,
+            taskCount: ordered.length,
+            task: { id: cur.id, title: cur.title, description: cur.description },
+        })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.post("/api/tournaments/:id/submit", async (req, res) => {
+    try {
+        const tournamentId = req.params.id
+        const userId = req.body.userId ? String(req.body.userId).trim() : ""
+        const code = String(req.body.code ?? "").replace(/^\uFEFF/, "").trimEnd()
+        if (!userId) {
+            res.status(400).json({ error: "userId обязателен" })
+            return
+        }
+        if (!code) {
+            res.status(400).json({ error: "Отправьте код" })
+            return
+        }
+
+        const { data: tour, error: tErr } = await supabase.from("tournaments").select("id, status").eq("id", tournamentId).maybeSingle()
+        if (tErr) throw tErr
+        if (!tour || tour.status !== "live") {
+            res.status(400).json({ error: "Отправка возможна только в активном турнире" })
+            return
+        }
+
+        const { data: part, error: pErr } = await supabase
+            .from("tournament_participants")
+            .select("id, current_task_index")
+            .eq("tournament_id", tournamentId)
+            .eq("user_id", userId)
+            .maybeSingle()
+        if (pErr) throw pErr
+        if (!part) {
+            res.status(403).json({ error: "Вы не участник турнира" })
+            return
+        }
+
+        const ordered = await getOrderedTournamentTasks(tournamentId)
+        const idx = part.current_task_index
+        if (idx >= ordered.length) {
+            res.status(400).json({ error: "Все задачи уже отправлены — завершите турнир" })
+            return
+        }
+
+        const taskRow = ordered[idx]
+        const { error: upErr } = await supabase.from("tournament_submissions").upsert(
+            {
+                tournament_id: tournamentId,
+                tournament_task_id: taskRow.id,
+                user_id: userId,
+                source_code: code,
+                review_status: "pending",
+                submitted_at: new Date().toISOString(),
+            },
+            { onConflict: "tournament_task_id,user_id" },
+        )
+        if (upErr) throw upErr
+
+        const nextIdx = idx + 1
+        const { error: updP } = await supabase
+            .from("tournament_participants")
+            .update({ current_task_index: nextIdx })
+            .eq("id", part.id)
+        if (updP) throw updP
+
+        res.json({ success: true, nextTaskIndex: nextIdx, allTasksSubmitted: nextIdx >= ordered.length })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.post("/api/tournaments/:id/complete", async (req, res) => {
+    try {
+        const tournamentId = req.params.id
+        const userId = req.body.userId ? String(req.body.userId).trim() : ""
+        if (!userId) {
+            res.status(400).json({ error: "userId обязателен" })
+            return
+        }
+
+        const ordered = await getOrderedTournamentTasks(tournamentId)
+        const { data: part, error: pErr } = await supabase
+            .from("tournament_participants")
+            .select("id, current_task_index, completed_at")
+            .eq("tournament_id", tournamentId)
+            .eq("user_id", userId)
+            .maybeSingle()
+        if (pErr) throw pErr
+        if (!part) {
+            res.status(403).json({ error: "не участник" })
+            return
+        }
+        if (part.completed_at) {
+            res.json({ success: true, already: true })
+            return
+        }
+        if (part.current_task_index < ordered.length) {
+            res.status(400).json({ error: "Сначала отправьте решения по всем задачам" })
+            return
+        }
+
+        const { error } = await supabase
+            .from("tournament_participants")
+            .update({ completed_at: new Date().toISOString() })
+            .eq("id", part.id)
+        if (error) throw error
+        res.json({ success: true })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.get("/api/tournaments/:id/summary", async (req, res) => {
+    try {
+        const tournamentId = req.params.id
+        const userId = req.query.userId ? String(req.query.userId).trim() : ""
+        if (!userId) {
+            res.status(400).json({ error: "userId обязателен" })
+            return
+        }
+
+        const { data: part } = await supabase
+            .from("tournament_participants")
+            .select("completed_at")
+            .eq("tournament_id", tournamentId)
+            .eq("user_id", userId)
+            .maybeSingle()
+        if (!part?.completed_at) {
+            res.status(400).json({ error: "Сначала завершите турнир на экране решения" })
+            return
+        }
+
+        const ordered = await getOrderedTournamentTasks(tournamentId)
+        const taskIds = ordered.map((t) => t.id)
+        const { data: subs, error: sErr } = await supabase
+            .from("tournament_submissions")
+            .select("tournament_task_id, source_code, review_status, submitted_at")
+            .eq("tournament_id", tournamentId)
+            .eq("user_id", userId)
+            .in("tournament_task_id", taskIds)
+        if (sErr) throw sErr
+        const byTask = new Map((subs ?? []).map((s) => [s.tournament_task_id, s]))
+
+        res.json({
+            tasks: ordered.map((t) => {
+                const s = byTask.get(t.id)
+                const st = s?.review_status ?? "pending"
+                const label = st === "pending" ? "На проверке" : st
+                return {
+                    taskId: t.id,
+                    title: t.title,
+                    code: s?.source_code ?? "",
+                    reviewStatus: st,
+                    label,
+                    labelRu: label,
+                }
+            }),
+        })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.get("/api/admin/tournaments/:id/submissions", async (req, res) => {
+    try {
+        const adminId = req.query.userId ? String(req.query.userId).trim() : ""
+        if (!(await ensureAdmin(adminId))) {
+            res.status(403).json({ error: "no access" })
+            return
+        }
+        const tournamentId = req.params.id
+
+        const { data: rows, error } = await supabase
+            .from("tournament_submissions")
+            .select("id, tournament_task_id, user_id, source_code, review_status, submitted_at")
+            .eq("tournament_id", tournamentId)
+            .order("submitted_at", { ascending: false })
+        if (error) throw error
+
+        const userIds = [...new Set((rows ?? []).map((r) => r.user_id).filter(Boolean))]
+        const taskIds = [...new Set((rows ?? []).map((r) => r.tournament_task_id).filter(Boolean))]
+        /** @type {Map<string, string>} */
+        const userMap = new Map()
+        if (userIds.length) {
+            const { data: users } = await supabase.from("users").select("id, username").in("id", userIds)
+            for (const u of users ?? []) userMap.set(u.id, u.username)
+        }
+        /** @type {Map<string, string>} */
+        const taskTitleMap = new Map()
+        if (taskIds.length) {
+            const { data: tt } = await supabase.from("tournament_tasks").select("id, title").in("id", taskIds)
+            for (const t of tt ?? []) taskTitleMap.set(t.id, t.title)
+        }
+
+        res.json(
+            (rows ?? []).map((r) => ({
+                id: r.id,
+                tournamentTaskId: r.tournament_task_id,
+                taskTitle: taskTitleMap.get(r.tournament_task_id) ?? "—",
+                userId: r.user_id,
+                username: userMap.get(r.user_id) ?? "—",
+                code: r.source_code,
+                reviewStatus: r.review_status,
+                submittedAt: r.submitted_at,
+            })),
+        )
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.patch("/api/admin/tournament-submissions/:submissionId", async (req, res) => {
+    try {
+        const adminId = req.body.userId ? String(req.body.userId).trim() : ""
+        if (!(await ensureAdmin(adminId))) {
+            res.status(403).json({ error: "no access" })
+            return
+        }
+        const status = String(req.body.status ?? "").toUpperCase()
+        if (status !== "PASS" && status !== "FAIL") {
+            res.status(400).json({ error: "status: PASS или FAIL" })
+            return
+        }
+        const submissionId = Number.parseInt(String(req.params.submissionId), 10)
+        if (!Number.isFinite(submissionId)) {
+            res.status(400).json({ error: "некорректный id" })
+            return
+        }
+
+        const { error } = await supabase
+            .from("tournament_submissions")
+            .update({
+                review_status: status,
+                reviewed_at: new Date().toISOString(),
+                reviewed_by: adminId,
+            })
+            .eq("id", submissionId)
         if (error) throw error
         res.json({ success: true, status })
     } catch (e) {

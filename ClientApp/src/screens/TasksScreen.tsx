@@ -83,7 +83,8 @@ export const TasksScreen: React.FC<{
           <div>
             <h3 className="text-xl font-bold font-headline text-on-surface">Список задач</h3>
             <p className="text-sm text-on-surface-variant">
-              Данные приходят из Supabase через бэкенд: <code className="text-primary">GET /api/tasks</code>
+              Задачи отсортированы по сложности: сначала easy, затем medium, затем hard.{' '}
+              <code className="text-primary">GET /api/tasks</code>
             </p>
           </div>
         </div>

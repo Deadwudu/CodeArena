@@ -31,6 +31,8 @@ export const TopBar: React.FC<TopBarProps> = ({
         return 'Решение';
       case 'attempts':
         return 'Попытки';
+      case 'tournaments':
+        return 'Турниры';
       case 'admin':
         return 'Админка';
       case 'auth':

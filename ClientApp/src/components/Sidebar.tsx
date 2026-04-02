@@ -1,5 +1,5 @@
 import React from 'react';
-import {BarChart3, LogIn, Shield, Terminal, Trophy} from 'lucide-react';
+import {BarChart3, LogIn, Medal, Shield, Terminal, Trophy} from 'lucide-react';
 import type {Screen} from '../types';
 import {cn} from '../lib/utils';
 import type {ApiUser} from '../types';
@@ -13,6 +13,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({currentScreen, onScreenChange, user}) => {
   const navItems: Array<{id: Screen; label: string; icon: React.ComponentType<{className?: string}>}> = [
     {id: 'tasks', label: 'Задачи', icon: Trophy},
+    {id: 'tournaments', label: 'Турниры', icon: Medal},
     {id: 'attempts', label: 'Мои попытки', icon: BarChart3},
     {id: 'solve', label: 'Решение', icon: Terminal},
     {id: 'admin', label: 'Админка', icon: Shield},

@@ -1,4 +1,13 @@
-import type {AdminUserStat, ApiAttempt, ApiAttemptWithUser, ApiTask, ApiUser, UserStatsSummary} from './types';
+import type {
+  AdminUserStat,
+  ApiAttempt,
+  ApiAttemptWithUser,
+  ApiTask,
+  ApiUser,
+  TournamentDetail,
+  TournamentListItem,
+  UserStatsSummary,
+} from './types';
 
 /** Продакшен: URL Node-сервера с /api (без слэша в конце), напр. https://codearena.onrender.com */
 const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN as string | undefined)?.replace(/\/$/, '') ?? '';
@@ -169,6 +178,124 @@ export function patchAdminAttemptStatus(args: {
   adminUserId: number | string;
 }) {
   return request<{success: true; status: string}>(`/api/admin/attempts/${args.attemptId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({userId: args.adminUserId, status: args.status}),
+  });
+}
+
+export function listTournaments() {
+  return request<TournamentListItem[]>('/api/tournaments');
+}
+
+export function getTournament(id: string, adminUserId?: number | string | null) {
+  const q =
+    adminUserId != null && adminUserId !== ''
+      ? `?adminUserId=${encodeURIComponent(String(adminUserId))}`
+      : '';
+  return request<TournamentDetail>(`/api/tournaments/${encodeURIComponent(id)}${q}`);
+}
+
+export function createTournament(args: {
+  userId: number | string;
+  name: string;
+  tasks: {title: string; description: string}[];
+}) {
+  return request<{success: boolean}>('/api/admin/tournaments', {
+    method: 'POST',
+    body: JSON.stringify(args),
+  });
+}
+
+export function goLiveTournament(tournamentId: string, userId: number | string) {
+  return request<{success: boolean}>(
+    `/api/admin/tournaments/${encodeURIComponent(tournamentId)}/go-live`,
+    {method: 'POST', body: JSON.stringify({userId})},
+  );
+}
+
+export function finishTournament(tournamentId: string, userId: number | string) {
+  return request<{success: boolean}>(
+    `/api/admin/tournaments/${encodeURIComponent(tournamentId)}/finish`,
+    {method: 'POST', body: JSON.stringify({userId})},
+  );
+}
+
+export function joinTournament(tournamentId: string, userId: number | string) {
+  return request<{success: boolean}>(`/api/tournaments/${encodeURIComponent(tournamentId)}/join`, {
+    method: 'POST',
+    body: JSON.stringify({userId}),
+  });
+}
+
+export type TournamentPlayResponse =
+  | {phase: 'waiting'; tournamentName: string; message: string}
+  | {
+      phase: 'task';
+      tournamentName: string;
+      taskIndex: number;
+      taskCount: number;
+      task: {id: string; title: string; description: string};
+    }
+  | {phase: 'await_complete'; tournamentName: string; taskCount: number}
+  | {phase: 'done'; tournamentName: string; completedAt: string}
+  | {phase: 'finished'; tournamentName: string; message: string};
+
+export function getTournamentPlay(tournamentId: string, userId: number | string) {
+  return request<TournamentPlayResponse>(
+    `/api/tournaments/${encodeURIComponent(tournamentId)}/play?userId=${encodeURIComponent(String(userId))}`,
+  );
+}
+
+export function submitTournamentTask(tournamentId: string, userId: number | string, code: string) {
+  return request<{success: boolean; nextTaskIndex: number; allTasksSubmitted: boolean}>(
+    `/api/tournaments/${encodeURIComponent(tournamentId)}/submit`,
+    {method: 'POST', body: JSON.stringify({userId, code})},
+  );
+}
+
+export function completeTournamentParticipant(tournamentId: string, userId: number | string) {
+  return request<{success: boolean}>(`/api/tournaments/${encodeURIComponent(tournamentId)}/complete`, {
+    method: 'POST',
+    body: JSON.stringify({userId}),
+  });
+}
+
+export function getTournamentSummary(tournamentId: string, userId: number | string) {
+  return request<{
+    tasks: Array<{
+      taskId: string;
+      title: string;
+      code: string;
+      reviewStatus: string;
+      label: string;
+      labelRu: string;
+    }>;
+  }>(`/api/tournaments/${encodeURIComponent(tournamentId)}/summary?userId=${encodeURIComponent(String(userId))}`);
+}
+
+export type TournamentSubmissionRow = {
+  id: number;
+  tournamentTaskId: string;
+  taskTitle: string;
+  userId: string;
+  username: string;
+  code: string;
+  reviewStatus: string;
+  submittedAt: string;
+};
+
+export function listTournamentSubmissions(tournamentId: string, adminUserId: number | string) {
+  return request<TournamentSubmissionRow[]>(
+    `/api/admin/tournaments/${encodeURIComponent(tournamentId)}/submissions?userId=${encodeURIComponent(String(adminUserId))}`,
+  );
+}
+
+export function patchTournamentSubmission(args: {
+  submissionId: number;
+  status: 'PASS' | 'FAIL';
+  adminUserId: number | string;
+}) {
+  return request<{success: boolean}>(`/api/admin/tournament-submissions/${args.submissionId}`, {
     method: 'PATCH',
     body: JSON.stringify({userId: args.adminUserId, status: args.status}),
   });
