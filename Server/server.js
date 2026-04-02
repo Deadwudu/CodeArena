@@ -2,7 +2,7 @@ const express = require("express")
 const cors = require("cors")
 const path = require("path")
 const { supabase } = require("./supabase")
-const { evaluateAgainstValidation } = require("./sandbox")
+const { evaluateAgainstValidation, computeExpectsFromReference } = require("./sandbox")
 
 const app = express()
 
@@ -440,6 +440,80 @@ app.get("/api/admin/tasks/:taskId/attempts", async (req, res) => {
                 username: a.user_id ? userMap.get(a.user_id) ?? "—" : "(гость)",
             })),
         )
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.post("/api/admin/fill-expect-from-reference", async (req, res) => {
+    try {
+        const { userId } = req.body
+        if (!(await ensureAdmin(userId))) {
+            res.status(403).json({ error: "no access" })
+            return
+        }
+        const referenceCode = String(req.body.referenceCode ?? "").replace(/^\uFEFF/, "").trimEnd()
+        const exportName = String(req.body.export ?? req.body.exportName ?? "").trim()
+        let cases = req.body.cases
+        if (typeof cases === "string") {
+            try {
+                cases = JSON.parse(cases)
+            } catch {
+                res.status(400).json({ error: "cases: невалидный JSON" })
+                return
+            }
+        }
+        if (!Array.isArray(cases)) {
+            res.status(400).json({ error: "cases — массив объектов { args: [...] }" })
+            return
+        }
+
+        const normalized = cases.map((c, i) => {
+            if (!c || typeof c !== "object") throw new Error(`Кейс ${i + 1}: ожидался объект`)
+            if (!Object.prototype.hasOwnProperty.call(c, "args")) throw new Error(`Кейс ${i + 1}: нужно поле args (массив аргументов)`)
+            if (!Array.isArray(c.args)) throw new Error(`Кейс ${i + 1}: args должен быть массивом`)
+            return { args: c.args }
+        })
+
+        const filled = await computeExpectsFromReference(referenceCode, exportName, normalized)
+        res.json({ cases: filled })
+    } catch (e) {
+        res.status(400).json({ error: e?.message ?? String(e) })
+    }
+})
+
+app.patch("/api/admin/attempts/:attemptId", async (req, res) => {
+    try {
+        const adminId = req.body.userId ? String(req.body.userId).trim() : ""
+        if (!(await ensureAdmin(adminId))) {
+            res.status(403).json({ error: "no access" })
+            return
+        }
+        const status = String(req.body.status ?? "").toUpperCase()
+        if (status !== "PASS" && status !== "FAIL") {
+            res.status(400).json({ error: "status должен быть PASS или FAIL" })
+            return
+        }
+        const attemptId = Number.parseInt(String(req.params.attemptId), 10)
+        if (!Number.isFinite(attemptId)) {
+            res.status(400).json({ error: "некорректный id попытки" })
+            return
+        }
+
+        const { data: row, error: findErr } = await supabase
+            .from("attempts")
+            .select("id")
+            .eq("id", attemptId)
+            .maybeSingle()
+        if (findErr) throw findErr
+        if (!row) {
+            res.status(404).json({ error: "попытка не найдена" })
+            return
+        }
+
+        const { error } = await supabase.from("attempts").update({ status_code: status }).eq("id", attemptId)
+        if (error) throw error
+        res.json({ success: true, status })
     } catch (e) {
         res.status(500).json({ error: e?.message ?? "db error" })
     }

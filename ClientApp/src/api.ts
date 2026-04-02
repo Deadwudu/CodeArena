@@ -107,6 +107,7 @@ export function createTask(args: {
   difficulty: string;
   description: string;
   userId: number | string;
+  id?: string;
   validation?: unknown;
 }) {
   return request<{success: true}>('/api/tasks', {
@@ -139,5 +140,33 @@ export function getAdminUserAttempts(forUserId: string, adminUserId: number | st
   return request<ApiAttempt[]>(
     `/api/admin/user-attempts?userId=${encodeURIComponent(String(adminUserId))}&forUserId=${encodeURIComponent(forUserId)}`,
   );
+}
+
+export function fillExpectFromReference(args: {
+  userId: number | string;
+  exportName: string;
+  referenceCode: string;
+  cases: { args: unknown[] }[];
+}) {
+  return request<{cases: {args: unknown[]; expect: unknown}[]}>('/api/admin/fill-expect-from-reference', {
+    method: 'POST',
+    body: JSON.stringify({
+      userId: args.userId,
+      export: args.exportName,
+      referenceCode: args.referenceCode,
+      cases: args.cases,
+    }),
+  });
+}
+
+export function patchAdminAttemptStatus(args: {
+  attemptId: number;
+  status: 'PASS' | 'FAIL';
+  adminUserId: number | string;
+}) {
+  return request<{success: true; status: string}>(`/api/admin/attempts/${args.attemptId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({userId: args.adminUserId, status: args.status}),
+  });
 }
 

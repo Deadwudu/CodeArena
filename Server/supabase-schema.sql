@@ -80,6 +80,14 @@ insert into public.categories(name)
 values ('base')
 on conflict (name) do nothing;
 
+-- Администратор по умолчанию: логин admin, пароль 123. В продакшене смените пароль после первого входа.
+insert into public.users (username, password, role_id)
+select 'admin', '123', r.id
+from public.app_roles r
+where r.code = 'admin'
+on conflict (username) do update set
+  role_id = excluded.role_id;
+
 -- Задачи + автопроверки (validation JSON). Категория: base
 insert into public.tasks (id, title, description, difficulty_code, category_id, validation)
 select v.id, v.title, v.description, v.difficulty_code, c.id, v.validation::jsonb

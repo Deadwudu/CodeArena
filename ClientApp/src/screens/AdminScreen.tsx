@@ -1,15 +1,19 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {motion} from 'motion/react';
-import {ChevronDown, Loader2, Trash2} from 'lucide-react';
+import {ChevronDown, Loader2, Plus, Trash2} from 'lucide-react';
 import type {AdminUserStat, ApiAttempt, ApiAttemptWithUser, ApiTask, ApiUser} from '../types';
 import {
   createTask,
   deleteTask,
+  fillExpectFromReference,
   getAdminTaskAttempts,
   getAdminUserAttempts,
   getAdminUsersStats,
   getTasks,
+  patchAdminAttemptStatus,
 } from '../api';
+
+type CaseRow = { args: string; expect: string };
 
 function userStatKey(u: AdminUserStat): string {
   if (u.id === null) return '__guest__';
@@ -30,7 +34,12 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
   const [ title, setTitle ] = useState('');
   const [ difficulty, setDifficulty ] = useState<'easy' | 'medium' | 'hard'>('easy');
   const [ description, setDescription ] = useState('');
-  const [ validationJson, setValidationJson ] = useState('');
+  const [ taskSlug, setTaskSlug ] = useState('');
+  const [ exportName, setExportName ] = useState('');
+  const [ referenceCode, setReferenceCode ] = useState('');
+  const [ caseRows, setCaseRows ] = useState<CaseRow[]>([ { args: '[2, 3]', expect: '' } ]);
+  const [ fillingExpect, setFillingExpect ] = useState(false);
+  const [ patchingId, setPatchingId ] = useState<number | null>(null);
 
   const [ userStats, setUserStats ] = useState<AdminUserStat[]>([]);
   const [ loadingStats, setLoadingStats ] = useState(false);
@@ -166,27 +175,119 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
     };
   }, [ canAccess, user, selectedTaskGlobal ]);
 
+  const buildValidationFromRows = (): { version: 1; export: string; cases: { args: unknown[]; expect: unknown }[] } | null => {
+    const exp = exportName.trim();
+    if (!exp) {
+      setError('Укажите имя функции, которую студент должен реализовать (как в коде: function sum → введите sum).');
+      return null;
+    }
+    if (!caseRows.length) {
+      setError('Добавьте хотя бы один тест: массив аргументов и ожидаемый результат.');
+      return null;
+    }
+    const cases: { args: unknown[]; expect: unknown }[] = [];
+    for (let i = 0; i < caseRows.length; i++) {
+      const row = caseRows[i];
+      try {
+        const args = JSON.parse(row.args.trim() || '[]');
+        if (!Array.isArray(args)) throw new Error('args не массив');
+        if (!row.expect.trim()) throw new Error('пустое ожидание');
+        const expect = JSON.parse(row.expect);
+        cases.push({ args, expect });
+      } catch (e) {
+        setError(
+          `Кейс ${i + 1}: args — JSON-массив аргументов (например [2,3]), ожидание — валидный JSON. ${e instanceof Error ? e.message : ''}`.trim(),
+        );
+        return null;
+      }
+    }
+    return { version: 1, export: exp, cases };
+  };
+
+  const onFillExpectsFromReference = async () => {
+    if (!user) return;
+    setError(null);
+    const exp = exportName.trim();
+    if (!exp) {
+      setError('Сначала введите имя функции — оно должно совпадать с эталоном.');
+      return;
+    }
+    if (!referenceCode.trim()) {
+      setError('Вставьте эталонный код (ваш верный JS с функцией с этим именем).');
+      return;
+    }
+    const parsedCases: { args: unknown[] }[] = [];
+    for (let i = 0; i < caseRows.length; i++) {
+      try {
+        const args = JSON.parse(caseRows[i].args.trim() || '[]');
+        if (!Array.isArray(args)) throw new Error('не массив');
+        parsedCases.push({ args });
+      } catch {
+        setError(`Кейс ${i + 1}: поле «аргументы» должно быть JSON-массивом, напр. [2, 3] или ["abc"].`);
+        return;
+      }
+    }
+    setFillingExpect(true);
+    try {
+      const { cases: filled } = await fillExpectFromReference({
+        userId: user.id,
+        exportName: exp,
+        referenceCode,
+        cases: parsedCases,
+      });
+      setCaseRows(
+        filled.map((c) => ({
+          args: JSON.stringify(c.args),
+          expect: JSON.stringify(c.expect),
+        })),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFillingExpect(false);
+    }
+  };
+
   const onCreate = async () => {
     if (!user) return;
     try {
       setError(null);
-      let validation: unknown = undefined;
-      const raw = validationJson.trim();
-      if (raw) {
-        try {
-          validation = JSON.parse(raw);
-        } catch {
-          setError('validation: невалидный JSON');
-          return;
-        }
-      }
-      await createTask({ title, difficulty, description, userId: user.id, validation });
+      const validation = buildValidationFromRows();
+      if (!validation) return;
+      const id = taskSlug.trim() || undefined;
+      await createTask({
+        title,
+        difficulty,
+        description,
+        userId: user.id,
+        ...(id ? { id } : {}),
+        validation,
+      });
       setTitle('');
       setDescription('');
-      setValidationJson('');
+      setTaskSlug('');
+      setExportName('');
+      setReferenceCode('');
+      setCaseRows([ { args: '[2, 3]', expect: '' } ]);
       await reloadTasks();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const overrideAttemptStatus = async (attempt: ApiAttempt | ApiAttemptWithUser, status: 'PASS' | 'FAIL') => {
+    if (!user) return;
+    if (attempt.result === status) return;
+    setError(null);
+    setPatchingId(attempt.id);
+    try {
+      await patchAdminAttemptStatus({ attemptId: attempt.id, status, adminUserId: user.id });
+      setUserAttempts((prev) => prev.map((a) => (a.id === attempt.id ? { ...a, result: status } : a)));
+      setTaskAttemptsAll((prev) => prev.map((a) => (a.id === attempt.id ? { ...a, result: status } : a)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPatchingId(null);
     }
   };
 
@@ -366,6 +467,34 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                               </span>
                             </span>
                           </summary>
+                          {(a.result === 'PASS' || a.result === 'FAIL' || a.result === 'ERROR') ? (
+                            <div className="px-4 py-3 border-t border-outline-variant/10 flex flex-wrap items-center gap-2 bg-surface-container-high/20">
+                              <span className="text-xs text-on-surface-variant">Ручная оценка (PASS / FAIL):</span>
+                              <button
+                                type="button"
+                                disabled={patchingId === a.id || a.result === 'PASS'}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  void overrideAttemptStatus(a, 'PASS');
+                                }}
+                                className="text-xs px-2 py-1 rounded-lg bg-primary/20 text-primary font-bold disabled:opacity-40"
+                              >
+                                Засчитать PASS
+                              </button>
+                              <button
+                                type="button"
+                                disabled={patchingId === a.id || a.result === 'FAIL'}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  void overrideAttemptStatus(a, 'FAIL');
+                                }}
+                                className="text-xs px-2 py-1 rounded-lg bg-error/15 text-error font-bold disabled:opacity-40"
+                              >
+                                Засчитать FAIL
+                              </button>
+                              {patchingId === a.id ? <Loader2 className="w-3 h-3 animate-spin text-on-surface-variant" /> : null}
+                            </div>
+                          ) : null}
                           <pre className="px-4 pb-4 text-xs font-mono text-on-surface-variant bg-black/20 max-h-64 overflow-auto custom-scrollbar border-t border-outline-variant/10 pt-3">
                             {a.code}
                           </pre>
@@ -425,6 +554,34 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                           <span className="text-on-surface-variant">{new Date(a.createdAt).toLocaleString()}</span>
                         </span>
                       </summary>
+                      {(a.result === 'PASS' || a.result === 'FAIL' || a.result === 'ERROR') ? (
+                        <div className="px-4 py-3 border-t border-outline-variant/10 flex flex-wrap items-center gap-2 bg-surface-container-high/20">
+                          <span className="text-xs text-on-surface-variant">Ручная оценка:</span>
+                          <button
+                            type="button"
+                            disabled={patchingId === a.id || a.result === 'PASS'}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              void overrideAttemptStatus(a, 'PASS');
+                            }}
+                            className="text-xs px-2 py-1 rounded-lg bg-primary/20 text-primary font-bold disabled:opacity-40"
+                          >
+                            PASS
+                          </button>
+                          <button
+                            type="button"
+                            disabled={patchingId === a.id || a.result === 'FAIL'}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              void overrideAttemptStatus(a, 'FAIL');
+                            }}
+                            className="text-xs px-2 py-1 rounded-lg bg-error/15 text-error font-bold disabled:opacity-40"
+                          >
+                            FAIL
+                          </button>
+                          {patchingId === a.id ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                        </div>
+                      ) : null}
                       <pre className="px-4 pb-4 text-xs font-mono text-on-surface-variant bg-black/20 max-h-64 overflow-auto custom-scrollbar border-t border-outline-variant/10 pt-3">
                         {a.code}
                       </pre>
@@ -439,7 +596,28 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
 
       {canAccess ? (
         <section className="bg-surface-container-low rounded-xl p-8 border border-outline-variant/5">
-          <h4 className="text-lg font-bold text-on-surface mb-4">Управление задачами</h4>
+          <h4 className="text-lg font-bold text-on-surface mb-2">Новая задача и автопроверка</h4>
+          <div className="rounded-lg border border-primary/25 bg-primary/5 p-4 mb-6 text-sm text-on-surface-variant space-y-2">
+            <p className="font-bold text-on-surface">Что нужно от администратора</p>
+            <ol className="list-decimal pl-5 space-y-1.5">
+              <li>
+                В <strong>описании для студента</strong> явно напишите, как должна называться функция (например: «реализуйте функцию <code className="text-primary">sum(a, b)</code>»).
+              </li>
+              <li>
+                <strong>Имя функции</strong> — тот же идентификатор, что и в коде (латиница, без пробелов). Студент и эталон должны завершать задачу функцией с этим именем.
+              </li>
+              <li>
+                <strong>Тесты:</strong> в каждой строке в колонке «аргументы» укажите JSON-массив значений, которые передаются в функцию по порядку. Пример: для <code className="text-primary">sum(2, 3)</code> введите <code className="text-primary">[2, 3]</code>.
+              </li>
+              <li>
+                <strong>Ожидаемый результат</strong> можно не считать вручную: вставьте <strong>эталонный код</strong> (ваше верное решение целиком) и нажмите «Заполнить ожидания из эталона» — сервер прогонит эталон в той же песочнице, что и у студентов, и подставит правильные ответы. При необходимости отредактируйте ячейки вручную.
+              </li>
+              <li>
+                Не обязательно перечислять «все варианты решения» — только набор входов и ожидаемых выходов. Чем больше тестов, тем надёжнее проверка.
+              </li>
+            </ol>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <label className="block md:col-span-1">
               <div className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold mb-2">Название</div>
@@ -461,35 +639,125 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                 <option value="hard">hard</option>
               </select>
             </label>
-            <div className="flex items-end">
-              <button
-                type="button"
-                onClick={onCreate}
-                disabled={!title || !description}
-                className="w-full px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-primary-container text-on-primary-container font-bold shadow-lg shadow-primary/10 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Создать
-              </button>
-            </div>
+            <label className="block md:col-span-1">
+              <div className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold mb-2">
+                id задачи (необязательно)
+              </div>
+              <input
+                value={taskSlug}
+                onChange={(e) => setTaskSlug(e.target.value)}
+                placeholder="напр. my-sum — иначе будет автогенерация"
+                className="w-full bg-surface-container-low border border-outline-variant/20 rounded-lg px-3 py-2 text-sm text-on-surface focus:ring-1 focus:ring-primary outline-none"
+              />
+            </label>
             <label className="block md:col-span-3">
-              <div className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold mb-2">Описание</div>
+              <div className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold mb-2">Описание для студента</div>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="w-full min-h-28 bg-surface-container-low border border-outline-variant/20 rounded-lg px-3 py-2 text-sm text-on-surface focus:ring-1 focus:ring-primary outline-none custom-scrollbar"
               />
             </label>
-            <label className="block md:col-span-3">
+            <label className="block md:col-span-1">
               <div className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold mb-2">
-                Проверки (validation JSON, опционально)
+                Имя функции (export)
               </div>
-              <textarea
-                value={validationJson}
-                onChange={(e) => setValidationJson(e.target.value)}
-                placeholder={`{"version":1,"export":"double","cases":[{"args":[4],"expect":8},{"args":[0],"expect":0}]}`}
-                className="w-full min-h-24 bg-surface-container-low border border-outline-variant/20 rounded-lg px-3 py-2 text-xs font-mono text-on-surface focus:ring-1 focus:ring-primary outline-none custom-scrollbar"
+              <input
+                value={exportName}
+                onChange={(e) => setExportName(e.target.value)}
+                placeholder="sum"
+                className="w-full bg-surface-container-low border border-outline-variant/20 rounded-lg px-3 py-2 text-sm font-mono text-on-surface focus:ring-1 focus:ring-primary outline-none"
               />
             </label>
+            <div className="md:col-span-2 flex flex-col justify-end gap-2">
+              <button
+                type="button"
+                onClick={onFillExpectsFromReference}
+                disabled={fillingExpect}
+                className="w-full md:w-auto px-4 py-2.5 rounded-xl bg-surface-container-highest text-on-surface font-bold border border-outline-variant/20 hover:brightness-110 disabled:opacity-50 inline-flex items-center justify-center gap-2"
+              >
+                {fillingExpect ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Заполнить ожидания из эталона
+              </button>
+            </div>
+            <label className="block md:col-span-3">
+              <div className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold mb-2">
+                Эталонный код (ваше решение, внутри QuickJS — без require, Node, DOM)
+              </div>
+              <textarea
+                value={referenceCode}
+                onChange={(e) => setReferenceCode(e.target.value)}
+                placeholder={`function sum(a, b) {\n  return a + b;\n}`}
+                className="w-full min-h-32 bg-surface-container-low border border-outline-variant/20 rounded-lg px-3 py-2 text-xs font-mono text-on-surface focus:ring-1 focus:ring-primary outline-none custom-scrollbar"
+              />
+            </label>
+          </div>
+
+          <div className="mt-6">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">Тест-кейсы</div>
+              <button
+                type="button"
+                onClick={() => setCaseRows((rows) => [ ...rows, { args: '[]', expect: '' } ])}
+                className="text-xs inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-highest font-bold text-on-surface hover:brightness-110"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Добавить кейс
+              </button>
+            </div>
+            <div className="space-y-3">
+              {caseRows.map((row, idx) => (
+                <div
+                  key={idx}
+                  className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-start p-4 rounded-xl bg-surface-container border border-outline-variant/10"
+                >
+                  <label className="block min-w-0">
+                    <div className="text-[10px] text-on-surface-variant mb-1">Аргументы (JSON-массив)</div>
+                    <textarea
+                      value={row.args}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setCaseRows((prev) => prev.map((r, i) => (i === idx ? { ...r, args: v } : r)));
+                      }}
+                      rows={2}
+                      className="w-full bg-surface-container-low border border-outline-variant/20 rounded-lg px-2 py-1.5 text-xs font-mono text-on-surface outline-none"
+                    />
+                  </label>
+                  <label className="block min-w-0">
+                    <div className="text-[10px] text-on-surface-variant mb-1">Ожидаемый результат (JSON)</div>
+                    <textarea
+                      value={row.expect}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setCaseRows((prev) => prev.map((r, i) => (i === idx ? { ...r, expect: v } : r)));
+                      }}
+                      rows={2}
+                      className="w-full bg-surface-container-low border border-outline-variant/20 rounded-lg px-2 py-1.5 text-xs font-mono text-on-surface outline-none"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={caseRows.length <= 1}
+                    onClick={() => setCaseRows((prev) => prev.filter((_, i) => i !== idx))}
+                    className="p-2 rounded-lg text-error hover:bg-error/10 disabled:opacity-30 justify-self-start md:justify-self-center md:mt-6"
+                    title="Удалить кейс"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <button
+              type="button"
+              onClick={onCreate}
+              disabled={!title.trim() || !description.trim()}
+              className="w-full md:w-auto px-8 py-3 rounded-xl bg-gradient-to-r from-primary to-primary-container text-on-primary-container font-bold shadow-lg shadow-primary/10 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Создать задачу с этой автопроверкой
+            </button>
           </div>
 
           <div className="mt-10">
