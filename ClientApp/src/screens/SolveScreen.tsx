@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {motion} from 'motion/react';
-import {ArrowRight, ChevronDown, ChevronRight, CloudUpload, FileCode, Loader2, Play, Trash2} from 'lucide-react';
+import {ArrowRight, ChevronDown, ChevronRight, FileCode, Loader2, Play, Trash2} from 'lucide-react';
 import type {ApiAttempt, ApiTask, ApiUser} from '../types';
 import {getAttempts, getTask, getTasks, runSolution} from '../api';
 import {cn} from '../lib/utils';
@@ -186,21 +186,12 @@ export const SolveScreen: React.FC<{
           <button
             type="button"
             onClick={run}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-surface-container-highest text-primary font-bold transition-all hover:brightness-110 active:scale-95 shadow-xl disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-primary-container text-on-primary-container font-bold shadow-lg shadow-primary/10 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
             disabled={!canRun || runState.status === 'running'}
-            title={!user ? 'Сначала войдите' : undefined}
+            title={!user ? 'Сначала войдите' : 'Проверить код и сохранить попытку'}
           >
             {runState.status === 'running' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-current" />}
             Run
-          </button>
-          <button
-            type="button"
-            onClick={run}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-primary-container text-on-primary-container font-bold shadow-lg shadow-primary/10 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-            disabled={!canRun || runState.status === 'running'}
-          >
-            <CloudUpload className="w-4 h-4" />
-            Submit
           </button>
         </div>
 
