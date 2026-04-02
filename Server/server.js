@@ -59,6 +59,18 @@ function lastAttemptsPerUserTask(attempts) {
     return [...best.values()]
 }
 
+/** Турниры со сроком ends_at переводятся в finished (для таймера без отдельного cron). */
+async function expireLiveTournaments() {
+    const now = new Date().toISOString()
+    const { error } = await supabase
+        .from("tournaments")
+        .update({ status: "finished", finished_at: now })
+        .eq("status", "live")
+        .not("ends_at", "is", null)
+        .lte("ends_at", now)
+    if (error) console.error("expireLiveTournaments:", error.message)
+}
+
 async function getUserById(userId) {
     const { data: user, error } = await supabase.from("users").select("id, username, role_id").eq("id", userId).maybeSingle()
     if (error) throw error
@@ -694,9 +706,19 @@ app.post("/api/admin/tournaments/:id/go-live", async (req, res) => {
             res.status(400).json({ error: "Турнир уже запущен или завершён" })
             return
         }
+        let endsAt = null
+        const dm = req.body.durationMinutes
+        if (dm != null && dm !== "") {
+            const n = Number(dm)
+            if (Number.isFinite(n) && n > 0) {
+                const cap = 10080
+                const mins = Math.min(Math.floor(n), cap)
+                endsAt = new Date(Date.now() + mins * 60 * 1000).toISOString()
+            }
+        }
         const { error } = await supabase
             .from("tournaments")
-            .update({ status: "live", started_at: new Date().toISOString() })
+            .update({ status: "live", started_at: new Date().toISOString(), ends_at: endsAt })
             .eq("id", id)
         if (error) throw error
         res.json({ success: true })
@@ -727,10 +749,11 @@ app.post("/api/admin/tournaments/:id/finish", async (req, res) => {
 
 app.get("/api/tournaments", async (req, res) => {
     try {
+        await expireLiveTournaments()
         const userId = req.query.userId ? String(req.query.userId).trim() : ""
         const { data, error } = await supabase
             .from("tournaments")
-            .select("id, name, status, started_at, finished_at, created_at")
+            .select("id, name, status, started_at, finished_at, ends_at, created_at")
             .order("created_at", { ascending: false })
         if (error) throw error
         const rows = data ?? []
@@ -759,6 +782,7 @@ app.get("/api/tournaments", async (req, res) => {
                 status: r.status,
                 startedAt: r.started_at,
                 finishedAt: r.finished_at,
+                endsAt: r.ends_at,
                 createdAt: r.created_at,
                 taskCount: taskCounts.get(r.id) ?? 0,
                 joined: userId ? joinedSet.has(r.id) : false,
@@ -772,6 +796,7 @@ app.get("/api/tournaments", async (req, res) => {
 /** Таблица результатов: только для status === finished. Места 1…n по числу PASS, при равенстве — раньше завершивший турнир (completed_at), иначе раньше последняя отправка. */
 app.get("/api/tournaments/:id/leaderboard", async (req, res) => {
     try {
+        await expireLiveTournaments()
         const tournamentId = req.params.id
         const { data: tour, error: tErr } = await supabase.from("tournaments").select("id, name, status").eq("id", tournamentId).maybeSingle()
         if (tErr) throw tErr
@@ -864,6 +889,7 @@ app.get("/api/tournaments/:id/leaderboard", async (req, res) => {
 
 app.get("/api/tournaments/:id", async (req, res) => {
     try {
+        await expireLiveTournaments()
         const id = req.params.id
         const adminId = req.query.adminUserId ? String(req.query.adminUserId).trim() : ""
         const isAdmin = adminId ? await ensureAdmin(adminId) : false
@@ -883,6 +909,7 @@ app.get("/api/tournaments/:id", async (req, res) => {
             status: tour.status,
             startedAt: tour.started_at,
             finishedAt: tour.finished_at,
+            endsAt: tour.ends_at,
             createdAt: tour.created_at,
             taskCount: tasks.length,
             tasks: hideBodies
@@ -941,6 +968,7 @@ app.post("/api/tournaments/:id/join", async (req, res) => {
 
 app.get("/api/tournaments/:id/play", async (req, res) => {
     try {
+        await expireLiveTournaments()
         const tournamentId = req.params.id
         const userId = req.query.userId ? String(req.query.userId).trim() : ""
         if (!userId) {
@@ -948,7 +976,11 @@ app.get("/api/tournaments/:id/play", async (req, res) => {
             return
         }
 
-        const { data: tour, error: tErr } = await supabase.from("tournaments").select("id, status, name").eq("id", tournamentId).maybeSingle()
+        const { data: tour, error: tErr } = await supabase
+            .from("tournaments")
+            .select("id, status, name, ends_at")
+            .eq("id", tournamentId)
+            .maybeSingle()
         if (tErr) throw tErr
         if (!tour) {
             res.status(404).json({ error: "турнир не найден" })
@@ -967,18 +999,20 @@ app.get("/api/tournaments/:id/play", async (req, res) => {
             return
         }
 
+        const endsAt = tour.ends_at ?? null
+
         if (part.completed_at) {
-            res.json({ phase: "done", tournamentName: tour.name, completedAt: part.completed_at })
+            res.json({ phase: "done", tournamentName: tour.name, completedAt: part.completed_at, endsAt })
             return
         }
 
         if (tour.status === "pending") {
-            res.json({ phase: "waiting", tournamentName: tour.name, message: "Ожидание старта турнира администратором" })
+            res.json({ phase: "waiting", tournamentName: tour.name, message: "Ожидание старта турнира администратором", endsAt })
             return
         }
 
         if (tour.status === "finished") {
-            res.json({ phase: "finished", tournamentName: tour.name, message: "Турнир завершён" })
+            res.json({ phase: "finished", tournamentName: tour.name, message: "Турнир завершён", endsAt })
             return
         }
 
@@ -989,6 +1023,7 @@ app.get("/api/tournaments/:id/play", async (req, res) => {
                 phase: "await_complete",
                 tournamentName: tour.name,
                 taskCount: ordered.length,
+                endsAt,
             })
             return
         }
@@ -999,6 +1034,7 @@ app.get("/api/tournaments/:id/play", async (req, res) => {
             tournamentName: tour.name,
             taskIndex: idx,
             taskCount: ordered.length,
+            endsAt,
             task: { id: cur.id, title: cur.title, description: cur.description },
         })
     } catch (e) {
@@ -1008,6 +1044,7 @@ app.get("/api/tournaments/:id/play", async (req, res) => {
 
 app.post("/api/tournaments/:id/submit", async (req, res) => {
     try {
+        await expireLiveTournaments()
         const tournamentId = req.params.id
         const userId = req.body.userId ? String(req.body.userId).trim() : ""
         const code = String(req.body.code ?? "").replace(/^\uFEFF/, "").trimEnd()
@@ -1116,6 +1153,7 @@ app.post("/api/tournaments/:id/complete", async (req, res) => {
 
 app.get("/api/tournaments/:id/summary", async (req, res) => {
     try {
+        await expireLiveTournaments()
         const tournamentId = req.params.id
         const userId = req.query.userId ? String(req.query.userId).trim() : ""
         if (!userId) {
@@ -1151,7 +1189,7 @@ app.get("/api/tournaments/:id/summary", async (req, res) => {
         const taskIds = ordered.map((t) => t.id)
         const { data: subs, error: sErr } = await supabase
             .from("tournament_submissions")
-            .select("tournament_task_id, source_code, review_status, submitted_at")
+            .select("tournament_task_id, source_code, review_status, submitted_at, admin_comment")
             .eq("tournament_id", tournamentId)
             .eq("user_id", userId)
             .in("tournament_task_id", taskIds)
@@ -1168,6 +1206,7 @@ app.get("/api/tournaments/:id/summary", async (req, res) => {
                     title: t.title,
                     code: s?.source_code ?? "",
                     reviewStatus: st,
+                    adminComment: s?.admin_comment ?? null,
                     label,
                     labelRu: label,
                 }
@@ -1189,7 +1228,7 @@ app.get("/api/admin/tournaments/:id/submissions", async (req, res) => {
 
         const { data: rows, error } = await supabase
             .from("tournament_submissions")
-            .select("id, tournament_task_id, user_id, source_code, review_status, submitted_at")
+            .select("id, tournament_task_id, user_id, source_code, review_status, submitted_at, admin_comment")
             .eq("tournament_id", tournamentId)
             .order("submitted_at", { ascending: false })
         if (error) throw error
@@ -1219,6 +1258,7 @@ app.get("/api/admin/tournaments/:id/submissions", async (req, res) => {
                 code: r.source_code,
                 reviewStatus: r.review_status,
                 submittedAt: r.submitted_at,
+                adminComment: r.admin_comment ?? null,
             })),
         )
     } catch (e) {
@@ -1244,16 +1284,104 @@ app.patch("/api/admin/tournament-submissions/:submissionId", async (req, res) =>
             return
         }
 
+        const commentRaw = req.body.comment != null ? String(req.body.comment) : ""
+        const adminComment = commentRaw.trim().slice(0, 2000)
+
+        const { data: prev, error: prevErr } = await supabase
+            .from("tournament_submissions")
+            .select("id, user_id, tournament_id")
+            .eq("id", submissionId)
+            .maybeSingle()
+        if (prevErr) throw prevErr
+        if (!prev) {
+            res.status(404).json({ error: "отправка не найдена" })
+            return
+        }
+
         const { error } = await supabase
             .from("tournament_submissions")
             .update({
                 review_status: status,
                 reviewed_at: new Date().toISOString(),
                 reviewed_by: adminId,
+                admin_comment: adminComment || null,
             })
             .eq("id", submissionId)
         if (error) throw error
+
+        const { data: tname } = await supabase.from("tournaments").select("name").eq("id", prev.tournament_id).maybeSingle()
+        const ttitle = tname?.name ?? "Турнир"
+        let body = `Задача проверена: ${status}`
+        if (adminComment) body += `. Комментарий: ${adminComment}`
+        const ins = await supabase.from("user_notifications").insert({
+            user_id: prev.user_id,
+            title: `${ttitle}: проверка работы`,
+            body: body.slice(0, 2000),
+            link_kind: "tournament",
+            link_id: String(prev.tournament_id),
+        })
+        if (ins.error) console.error("user_notifications insert:", ins.error.message)
+
         res.json({ success: true, status })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.get("/api/notifications", async (req, res) => {
+    try {
+        const userId = req.query.userId ? String(req.query.userId).trim() : ""
+        if (!userId) {
+            res.status(400).json({ error: "userId обязателен" })
+            return
+        }
+        const { data, error } = await supabase
+            .from("user_notifications")
+            .select("id, title, body, link_kind, link_id, read_at, created_at")
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false })
+            .limit(50)
+        if (error) throw error
+        const rows = data ?? []
+        const unreadCount = rows.filter((n) => !n.read_at).length
+        res.json({
+            unreadCount,
+            items: rows.map((n) => ({
+                id: n.id,
+                title: n.title,
+                body: n.body,
+                linkKind: n.link_kind,
+                linkId: n.link_id,
+                readAt: n.read_at,
+                createdAt: n.created_at,
+            })),
+        })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.post("/api/notifications/:id/read", async (req, res) => {
+    try {
+        const userId = req.body.userId ? String(req.body.userId).trim() : ""
+        if (!userId) {
+            res.status(400).json({ error: "userId обязателен" })
+            return
+        }
+        const id = Number.parseInt(String(req.params.id), 10)
+        if (!Number.isFinite(id)) {
+            res.status(400).json({ error: "некорректный id" })
+            return
+        }
+        const { data: n, error: nErr } = await supabase.from("user_notifications").select("user_id").eq("id", id).maybeSingle()
+        if (nErr) throw nErr
+        if (!n || String(n.user_id) !== userId) {
+            res.status(403).json({ error: "нет доступа" })
+            return
+        }
+        const { error } = await supabase.from("user_notifications").update({ read_at: new Date().toISOString() }).eq("id", id)
+        if (error) throw error
+        res.json({ success: true })
     } catch (e) {
         res.status(500).json({ error: e?.message ?? "db error" })
     }

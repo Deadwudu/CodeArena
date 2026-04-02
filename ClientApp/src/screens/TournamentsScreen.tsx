@@ -24,6 +24,7 @@ import {
   submitTournamentTask,
 } from '../api';
 import {CodeEditor} from '../components/CodeEditor';
+import {TournamentCountdown} from '../components/TournamentCountdown';
 
 type View = 'list' | 'play' | 'summary' | 'review' | 'leaderboard';
 
@@ -49,6 +50,10 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
   const [ reviewBusyId, setReviewBusyId ] = useState<number | null>(null);
   const [ leaderboard, setLeaderboard ] = useState<TournamentLeaderboardResponse | null>(null);
   const [ leaderboardLoading, setLeaderboardLoading ] = useState(false);
+  const [ goLiveOpenId, setGoLiveOpenId ] = useState<string | null>(null);
+  const [ goLiveMinutes, setGoLiveMinutes ] = useState('');
+  const [ goLiveBusy, setGoLiveBusy ] = useState(false);
+  const [ reviewNotes, setReviewNotes ] = useState<Record<number, string>>({});
 
   const isAdmin = user?.role === 'admin';
 
@@ -125,11 +130,21 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
     setActiveId(id);
     setView('review');
     try {
-      setReviewRows(await listTournamentSubmissions(id, user.id));
+      const rows = await listTournamentSubmissions(id, user.id);
+      setReviewRows(rows);
+      const m: Record<number, string> = {};
+      for (const r of rows) m[r.id] = r.adminComment ?? '';
+      setReviewNotes(m);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setReviewRows([]);
+      setReviewNotes({});
     }
+  };
+
+  const renderPlayTimer = (p: TournamentPlayResponse) => {
+    if (p.phase === 'finished' || !('endsAt' in p) || !p.endsAt) return null;
+    return <TournamentCountdown endsAt={p.endsAt} status="live" className="mt-2" />;
   };
 
   const onCreateTournament = async () => {
@@ -213,6 +228,7 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
           </section>
         ) : play.phase === 'done' ? (
           <section className="space-y-4">
+            {renderPlayTimer(play)}
             <p className="text-on-surface">Турнир завершён с вашей стороны.</p>
             <button
               type="button"
@@ -225,6 +241,7 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
         ) : play.phase === 'await_complete' ? (
           <section className="bg-surface-container-low rounded-xl p-8 border border-outline-variant/5 space-y-4">
             <h3 className="text-xl font-bold text-on-surface">{play.tournamentName}</h3>
+            {renderPlayTimer(play)}
             <p className="text-on-surface-variant">
               Вы отправили решения по всем {play.taskCount} задачам. Нажмите «Завершить турнир», чтобы увидеть сводку с отметками проверки.
             </p>
@@ -253,6 +270,7 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
             <div className="text-[10px] uppercase tracking-widest text-primary font-bold">
               Задача {play.taskIndex + 1} из {play.taskCount}
             </div>
+            {renderPlayTimer(play)}
             <h3 className="text-2xl font-bold font-headline text-on-surface">{play.task.title}</h3>
             <div className="text-sm text-on-surface-variant whitespace-pre-wrap border-l-2 border-primary/40 pl-4">{play.task.description}</div>
             <div>
@@ -329,6 +347,12 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
               <pre className="text-xs font-mono text-on-surface-variant bg-black/20 rounded-lg p-3 max-h-48 overflow-auto custom-scrollbar whitespace-pre-wrap">
                 {row.code || '—'}
               </pre>
+              {row.adminComment ? (
+                <div className="text-sm text-on-surface border-l-2 border-primary/30 pl-3 py-1 bg-primary/5 rounded-r-lg">
+                  <span className="text-[10px] uppercase font-bold text-on-surface-variant">Комментарий проверяющего</span>
+                  <p className="mt-1 whitespace-pre-wrap">{row.adminComment}</p>
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
@@ -432,6 +456,17 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                 <span className="text-xs font-bold">{r.reviewStatus}</span>
               </div>
               <pre className="text-xs font-mono bg-black/20 rounded-lg p-3 max-h-40 overflow-auto custom-scrollbar whitespace-pre-wrap">{r.code}</pre>
+              <label className="block">
+                <span className="text-[10px] uppercase font-bold text-on-surface-variant">Комментарий участнику</span>
+                <textarea
+                  value={reviewNotes[r.id] ?? ''}
+                  onChange={(e) => setReviewNotes((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                  disabled={r.reviewStatus === 'PASS' || r.reviewStatus === 'FAIL'}
+                  placeholder="Замечания, совет или причина FAIL — попадёт в уведомление и в «Мои итоги»"
+                  rows={2}
+                  className="mt-1 w-full text-xs bg-surface-container-low border border-outline-variant/20 rounded-lg px-2 py-1.5 text-on-surface disabled:opacity-60"
+                />
+              </label>
               <div className="flex flex-wrap items-center gap-2">
                 {r.reviewStatus === 'PASS' || r.reviewStatus === 'FAIL' ? (
                   <span className="text-[10px] uppercase text-on-surface-variant">Оценка выставлена — кнопки ниже неактивны</span>
@@ -442,8 +477,18 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                   onClick={async () => {
                     setReviewBusyId(r.id);
                     try {
-                      await patchTournamentSubmission({ submissionId: r.id, status: 'PASS', adminUserId: user.id });
-                      setReviewRows(await listTournamentSubmissions(activeId, user.id));
+                      const note = (reviewNotes[r.id] ?? '').trim();
+                      await patchTournamentSubmission({
+                        submissionId: r.id,
+                        status: 'PASS',
+                        adminUserId: user.id,
+                        ...(note ? {comment: note} : {}),
+                      });
+                      const next = await listTournamentSubmissions(activeId, user.id);
+                      setReviewRows(next);
+                      const m: Record<number, string> = {};
+                      for (const row of next) m[row.id] = row.adminComment ?? '';
+                      setReviewNotes(m);
                     } finally {
                       setReviewBusyId(null);
                     }
@@ -458,8 +503,18 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                   onClick={async () => {
                     setReviewBusyId(r.id);
                     try {
-                      await patchTournamentSubmission({ submissionId: r.id, status: 'FAIL', adminUserId: user.id });
-                      setReviewRows(await listTournamentSubmissions(activeId, user.id));
+                      const note = (reviewNotes[r.id] ?? '').trim();
+                      await patchTournamentSubmission({
+                        submissionId: r.id,
+                        status: 'FAIL',
+                        adminUserId: user.id,
+                        ...(note ? {comment: note} : {}),
+                      });
+                      const next = await listTournamentSubmissions(activeId, user.id);
+                      setReviewRows(next);
+                      const m: Record<number, string> = {};
+                      for (const row of next) m[row.id] = row.adminComment ?? '';
+                      setReviewNotes(m);
                     } finally {
                       setReviewBusyId(null);
                     }
@@ -488,7 +543,7 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
             <div>
               <h2 className="text-2xl font-black font-headline text-on-surface">Турниры</h2>
               <p className="text-sm text-on-surface-variant mt-1 max-w-xl">
-                Админ создаёт турнир и сроки старта. После «Начать турнир» участники видят задачи по очереди. Решения не проверяются автоматически — только администратор выставляет PASS/FAIL.
+                Админ создаёт турнир и при старте может задать время до автозавершения. Участники решают задачи по очереди; проверка вручную (PASS/FAIL) с опциональным комментарием — участник видит его в «Мои итоги» и получает уведомление в колокольчике.
               </p>
             </div>
           </div>
@@ -587,6 +642,67 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
         </div>
       ) : null}
 
+      {goLiveOpenId && isAdmin && user ? (
+        <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4" onClick={() => !goLiveBusy && setGoLiveOpenId(null)}>
+          <div
+            className="bg-surface-container-low rounded-2xl border border-outline-variant/20 max-w-md w-full p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-on-surface">Запуск турнира</h3>
+            <p className="text-xs text-on-surface-variant">
+              По желанию укажите длительность в минутах после старта — по истечении турнир автоматически завершится (статус «Завершён», без отправок). Пустое поле — завершение только вручную кнопкой «Завершить». Максимум 10080 мин (7 суток).
+            </p>
+            <label className="block">
+              <span className="text-[10px] uppercase font-bold text-on-surface-variant">Минут до автозавершения (необязательно)</span>
+              <input
+                type="number"
+                min={1}
+                max={10080}
+                value={goLiveMinutes}
+                onChange={(e) => setGoLiveMinutes(e.target.value)}
+                placeholder="напр. 120"
+                className="mt-1 w-full bg-surface-container border rounded-lg px-3 py-2 text-sm text-on-surface"
+              />
+            </label>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                disabled={goLiveBusy}
+                onClick={() => !goLiveBusy && setGoLiveOpenId(null)}
+                className="px-4 py-2 rounded-lg font-bold text-on-surface-variant"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                disabled={goLiveBusy}
+                onClick={async () => {
+                  if (!user) return;
+                  setGoLiveBusy(true);
+                  setError(null);
+                  try {
+                    const raw = goLiveMinutes.trim();
+                    const n = raw === '' ? null : Number(raw);
+                    const mins = n != null && Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 10080) : null;
+                    await goLiveTournament(goLiveOpenId, user.id, mins);
+                    setGoLiveOpenId(null);
+                    setGoLiveMinutes('');
+                    await reloadList();
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : String(e));
+                  } finally {
+                    setGoLiveBusy(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-lg font-bold bg-primary text-on-primary-container"
+              >
+                {goLiveBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Запустить'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {error && view === 'list' ? <div className="text-error text-sm whitespace-pre-wrap">{error}</div> : null}
 
       {loading ? (
@@ -600,25 +716,22 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
             >
               <div className="flex-1 min-w-[200px]">
                 <div className="font-bold text-on-surface">{t.name}</div>
-                <div className="text-xs text-on-surface-variant">
-                  <span className={t.status === 'finished' ? 'text-primary font-bold' : ''}>{statusRu(t.status)}</span>
-                  {' '}
-                  • Задач: {t.taskCount}
-                  {t.status === 'pending' ? ' • условия скрыты до старта' : ''}
+                <div className="text-xs text-on-surface-variant space-y-1">
+                  <div>
+                    <span className={t.status === 'finished' ? 'text-primary font-bold' : ''}>{statusRu(t.status)}</span>
+                    {' '}
+                    • Задач: {t.taskCount}
+                    {t.status === 'pending' ? ' • условия скрыты до старта' : ''}
+                  </div>
+                  <TournamentCountdown endsAt={t.endsAt ?? null} status={t.status} />
                 </div>
               </div>
               {isAdmin && t.status === 'pending' ? (
                 <button
                   type="button"
-                  onClick={async () => {
-                    if (!user) return;
-                    setError(null);
-                    try {
-                      await goLiveTournament(t.id, user.id);
-                      await reloadList();
-                    } catch (e) {
-                      setError(e instanceof Error ? e.message : String(e));
-                    }
+                  onClick={() => {
+                    setGoLiveMinutes('');
+                    setGoLiveOpenId(t.id);
                   }}
                   className="px-3 py-2 rounded-lg bg-primary/20 text-primary text-xs font-bold transition-all duration-200 hover:bg-primary/35 hover:ring-2 hover:ring-primary/25"
                 >

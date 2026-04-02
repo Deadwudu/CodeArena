@@ -28,6 +28,10 @@ Vite проксирует `/api` на `http://localhost:3000` (см. `vite.confi
 
 Откройте в IDE **корень репозитория** (`Diplom`), а не вложенную папку. Если после переноса осталась старая `CodeArena/` (файл занят процессом), закройте сервер/IDE и удалите её вручную.
 
+## Турниры: таймер, комментарии проверки, уведомления
+
+Выполните в Supabase SQL Editor скрипт [`Server/supabase-tournament-notifications.sql`](Server/supabase-tournament-notifications.sql) (колонки `ends_at`, `admin_comment`, таблица `user_notifications`). Без этого таймер и уведомления на бэкенде не заработают.
+
 ## Турниры: ошибка `tournaments_status_check`
 
 Если при создании турнира в логах Postgres или в ответе API приходит нарушение **`tournaments_status_check`**, в базе задан другой набор допустимых значений `status`, чем в текущем коде (**`pending`**, **`live`**, **`finished`**). Выполните в Supabase → SQL Editor скрипт [`Server/fix-tournaments-status-constraint.sql`](Server/fix-tournaments-status-constraint.sql) (один раз).

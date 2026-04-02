@@ -227,6 +227,7 @@ create table if not exists public.tournaments (
   created_by uuid not null references public.users(id),
   started_at timestamptz,
   finished_at timestamptz,
+  ends_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -259,8 +260,23 @@ create table if not exists public.tournament_submissions (
   submitted_at timestamptz not null default now(),
   reviewed_at timestamptz,
   reviewed_by uuid references public.users(id),
+  admin_comment text,
   unique (tournament_task_id, user_id)
 );
+
+create table if not exists public.user_notifications (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references public.users(id) on delete cascade,
+  title text not null,
+  body text,
+  link_kind text,
+  link_id text,
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_user_notifications_user_created
+  on public.user_notifications(user_id, created_at desc);
 
 create index if not exists idx_tournament_submissions_tournament_submitted
   on public.tournament_submissions(tournament_id, submitted_at desc);
@@ -269,6 +285,11 @@ alter table public.tournaments enable row level security;
 alter table public.tournament_tasks enable row level security;
 alter table public.tournament_participants enable row level security;
 alter table public.tournament_submissions enable row level security;
+
+alter table public.user_notifications enable row level security;
+
+drop policy if exists codearena_api_user_notifications on public.user_notifications;
+create policy codearena_api_user_notifications on public.user_notifications for all using (true) with check (true);
 
 drop policy if exists codearena_api_tournaments on public.tournaments;
 create policy codearena_api_tournaments on public.tournaments for all using (true) with check (true);

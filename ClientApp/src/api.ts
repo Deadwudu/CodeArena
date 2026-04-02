@@ -4,6 +4,7 @@ import type {
   ApiAttemptWithUser,
   ApiTask,
   ApiUser,
+  NotificationItem,
   TournamentDetail,
   TournamentLeaderboardResponse,
   TournamentListItem,
@@ -212,10 +213,20 @@ export function createTournament(args: {
   });
 }
 
-export function goLiveTournament(tournamentId: string, userId: number | string) {
+export function goLiveTournament(
+  tournamentId: string,
+  userId: number | string,
+  durationMinutes?: number | null,
+) {
   return request<{success: boolean}>(
     `/api/admin/tournaments/${encodeURIComponent(tournamentId)}/go-live`,
-    {method: 'POST', body: JSON.stringify({userId})},
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        userId,
+        ...(durationMinutes != null && durationMinutes > 0 ? {durationMinutes} : {}),
+      }),
+    },
   );
 }
 
@@ -266,6 +277,7 @@ export function getTournamentSummary(tournamentId: string, userId: number | stri
       title: string;
       code: string;
       reviewStatus: string;
+      adminComment?: string | null;
       label: string;
       labelRu: string;
     }>;
@@ -281,6 +293,7 @@ export type TournamentSubmissionRow = {
   code: string;
   reviewStatus: string;
   submittedAt: string;
+  adminComment?: string | null;
 };
 
 export function listTournamentSubmissions(tournamentId: string, adminUserId: number | string) {
@@ -293,10 +306,28 @@ export function patchTournamentSubmission(args: {
   submissionId: number;
   status: 'PASS' | 'FAIL';
   adminUserId: number | string;
+  comment?: string;
 }) {
   return request<{success: boolean}>(`/api/admin/tournament-submissions/${args.submissionId}`, {
     method: 'PATCH',
-    body: JSON.stringify({userId: args.adminUserId, status: args.status}),
+    body: JSON.stringify({
+      userId: args.adminUserId,
+      status: args.status,
+      ...(args.comment != null && args.comment !== '' ? {comment: args.comment} : {}),
+    }),
+  });
+}
+
+export function listNotifications(userId: number | string) {
+  return request<{unreadCount: number; items: NotificationItem[]}>(
+    `/api/notifications?userId=${encodeURIComponent(String(userId))}`,
+  );
+}
+
+export function markNotificationRead(notificationId: number, userId: number | string) {
+  return request<{success: boolean}>(`/api/notifications/${encodeURIComponent(String(notificationId))}/read`, {
+    method: 'POST',
+    body: JSON.stringify({userId}),
   });
 }
 

@@ -8,6 +8,8 @@ export interface TournamentListItem {
   status: TournamentStatus;
   startedAt: string | null;
   finishedAt: string | null;
+  /** ISO: авто-финиш активного тура (если задан при старте) */
+  endsAt?: string | null;
   createdAt: string;
   taskCount: number;
   /** Участие текущего пользователя (нужен query userId в GET /api/tournaments) */
@@ -27,6 +29,7 @@ export interface TournamentDetail {
   status: TournamentStatus;
   startedAt: string | null;
   finishedAt: string | null;
+  endsAt?: string | null;
   createdAt: string;
   taskCount: number;
   tasks: TournamentTaskPayload[];
@@ -34,17 +37,28 @@ export interface TournamentDetail {
 }
 
 export type TournamentPlayResponse =
-  | {phase: 'waiting'; tournamentName: string; message: string}
+  | {phase: 'waiting'; tournamentName: string; message: string; endsAt?: string | null}
   | {
       phase: 'task';
       tournamentName: string;
       taskIndex: number;
       taskCount: number;
+      endsAt?: string | null;
       task: {id: string; title: string; description: string};
     }
-  | {phase: 'await_complete'; tournamentName: string; taskCount: number}
-  | {phase: 'done'; tournamentName: string; completedAt: string}
-  | {phase: 'finished'; tournamentName: string; message: string};
+  | {phase: 'await_complete'; tournamentName: string; taskCount: number; endsAt?: string | null}
+  | {phase: 'done'; tournamentName: string; completedAt: string; endsAt?: string | null}
+  | {phase: 'finished'; tournamentName: string; message: string; endsAt?: string | null};
+
+export interface NotificationItem {
+  id: number;
+  title: string;
+  body: string | null;
+  linkKind: string | null;
+  linkId: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
 
 export interface TournamentLeaderboardRow {
   rank: number;

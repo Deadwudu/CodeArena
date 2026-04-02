@@ -93,6 +93,7 @@ export default function App() {
           onSearchChange={setSearch}
           onAuthLogin={() => goAuth('login')}
           onAuthRegister={() => goAuth('register')}
+          onOpenTournaments={() => setCurrentScreen('tournaments')}
         />
 
         <div className="flex-1 overflow-x-hidden custom-scrollbar">{renderScreen()}</div>

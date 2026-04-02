@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import type {ApiUser, TournamentListItem} from '../types';
 import {listTournaments} from '../api';
+import {TournamentCountdown} from '../components/TournamentCountdown';
 
 type HomeScreenProps = {
   user: ApiUser | null;
@@ -237,6 +238,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({user, onGoToTasks, onGoTo
                       </span>
                     </div>
                     <p className="text-xs text-on-surface-variant mt-2">Задач в туре: {t.taskCount}</p>
+                    <TournamentCountdown endsAt={t.endsAt ?? null} status={t.status} className="mt-2 block" />
                   </button>
                 </li>
               ))}

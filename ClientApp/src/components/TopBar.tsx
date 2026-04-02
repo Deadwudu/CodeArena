@@ -1,6 +1,7 @@
 import React, {useMemo} from 'react';
-import {Bell, LogOut, Search, UserPlus} from 'lucide-react';
+import {LogOut, Search, UserPlus} from 'lucide-react';
 import type {ApiUser, Screen} from '../types';
+import {NotificationBell} from './NotificationBell';
 
 interface TopBarProps {
   currentScreen: Screen;
@@ -11,6 +12,7 @@ interface TopBarProps {
   onSearchChange: (value: string) => void;
   onAuthLogin: () => void;
   onAuthRegister: () => void;
+  onOpenTournaments: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -22,6 +24,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onSearchChange,
   onAuthLogin,
   onAuthRegister,
+  onOpenTournaments,
 }) => {
   const showSearch = currentScreen === 'tasks' || currentScreen === 'attempts';
 
@@ -66,13 +69,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:bg-surface-container-highest rounded-lg transition-all active:scale-95"
-            aria-label="Уведомления"
-          >
-            <Bell className="w-5 h-5" />
-          </button>
+          <NotificationBell user={user} onOpenTournaments={onOpenTournaments} />
         </div>
 
         <div className="h-8 w-[1px] bg-outline-variant/30 mx-2" />
