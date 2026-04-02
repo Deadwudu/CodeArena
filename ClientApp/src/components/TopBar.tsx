@@ -23,8 +23,12 @@ export const TopBar: React.FC<TopBarProps> = ({
   onAuthLogin,
   onAuthRegister,
 }) => {
+  const showSearch = currentScreen === 'tasks' || currentScreen === 'attempts';
+
   const title = useMemo(() => {
     switch (currentScreen) {
+      case 'home':
+        return 'Главная';
       case 'tasks':
         return 'Задачи';
       case 'solve':
@@ -44,18 +48,20 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   return (
     <header className="w-full h-16 sticky top-0 z-40 bg-background flex justify-between items-center px-8 border-b border-outline-variant/5">
-      <div className="flex items-center gap-6 flex-1">
-        <div className="text-sm font-headline font-bold text-on-surface">{title}</div>
-        <div className="relative w-full max-w-md group">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant w-4 h-4 group-focus-within:text-primary transition-colors" />
-          <input
-            type="text"
-            placeholder="Поиск по задачам..."
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full bg-surface-container-low border-none rounded-lg pl-10 pr-4 py-2 text-sm focus:ring-1 focus:ring-primary text-on-surface placeholder:text-on-surface-variant"
-          />
-        </div>
+      <div className="flex items-center gap-6 flex-1 min-w-0">
+        <div className="text-sm font-headline font-bold text-on-surface shrink-0">{title}</div>
+        {showSearch ? (
+          <div className="relative w-full max-w-md group">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant w-4 h-4 group-focus-within:text-primary transition-colors" />
+            <input
+              type="text"
+              placeholder="Поиск по задачам..."
+              value={search}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="w-full bg-surface-container-low border-none rounded-lg pl-10 pr-4 py-2 text-sm focus:ring-1 focus:ring-primary text-on-surface placeholder:text-on-surface-variant"
+            />
+          </div>
+        ) : null}
       </div>
 
       <div className="flex items-center gap-4">

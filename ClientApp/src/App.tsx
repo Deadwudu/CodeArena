@@ -9,10 +9,11 @@ import {AttemptsScreen} from './screens/AttemptsScreen';
 import {AdminScreen} from './screens/AdminScreen';
 import {AuthScreen} from './screens/AuthScreen';
 import {TournamentsScreen} from './screens/TournamentsScreen';
+import {HomeScreen} from './screens/HomeScreen';
 import {loadUser, saveUser} from './storage';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<Screen>('tasks');
+  const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [user, setUser] = useState<ApiUser | null>(null);
   const [search, setSearch] = useState('');
@@ -40,6 +41,14 @@ export default function App() {
 
   const renderScreen = () => {
     switch (currentScreen) {
+      case 'home':
+        return (
+          <HomeScreen
+            user={user}
+            onGoToTasks={() => setCurrentScreen('tasks')}
+            onGoToTournaments={() => setCurrentScreen('tournaments')}
+          />
+        );
       case 'tasks':
         return <TasksScreen search={search} onOpenTask={openTask} />;
       case 'solve':
@@ -53,7 +62,13 @@ export default function App() {
       case 'tournaments':
         return <TournamentsScreen user={user} />;
       default:
-        return <TasksScreen search={search} onOpenTask={openTask} />;
+        return (
+          <HomeScreen
+            user={user}
+            onGoToTasks={() => setCurrentScreen('tasks')}
+            onGoToTournaments={() => setCurrentScreen('tournaments')}
+          />
+        );
     }
   };
 

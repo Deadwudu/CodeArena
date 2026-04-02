@@ -1,4 +1,4 @@
-export type Screen = 'tasks' | 'solve' | 'attempts' | 'admin' | 'auth' | 'tournaments';
+export type Screen = 'home' | 'tasks' | 'solve' | 'attempts' | 'admin' | 'auth' | 'tournaments';
 
 export type TournamentStatus = 'pending' | 'live' | 'finished';
 
