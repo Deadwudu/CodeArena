@@ -5,7 +5,9 @@ import type {
   ApiTask,
   ApiUser,
   TournamentDetail,
+  TournamentLeaderboardResponse,
   TournamentListItem,
+  TournamentPlayResponse,
   UserStatsSummary,
 } from './types';
 
@@ -183,8 +185,12 @@ export function patchAdminAttemptStatus(args: {
   });
 }
 
-export function listTournaments() {
-  return request<TournamentListItem[]>('/api/tournaments');
+export function listTournaments(userId?: number | string | null) {
+  const q =
+    userId != null && userId !== ''
+      ? `?userId=${encodeURIComponent(String(userId))}`
+      : '';
+  return request<TournamentListItem[]>(`/api/tournaments${q}`);
 }
 
 export function getTournament(id: string, adminUserId?: number | string | null) {
@@ -227,18 +233,11 @@ export function joinTournament(tournamentId: string, userId: number | string) {
   });
 }
 
-export type TournamentPlayResponse =
-  | {phase: 'waiting'; tournamentName: string; message: string}
-  | {
-      phase: 'task';
-      tournamentName: string;
-      taskIndex: number;
-      taskCount: number;
-      task: {id: string; title: string; description: string};
-    }
-  | {phase: 'await_complete'; tournamentName: string; taskCount: number}
-  | {phase: 'done'; tournamentName: string; completedAt: string}
-  | {phase: 'finished'; tournamentName: string; message: string};
+export function getTournamentLeaderboard(tournamentId: string) {
+  return request<TournamentLeaderboardResponse>(
+    `/api/tournaments/${encodeURIComponent(tournamentId)}/leaderboard`,
+  );
+}
 
 export function getTournamentPlay(tournamentId: string, userId: number | string) {
   return request<TournamentPlayResponse>(

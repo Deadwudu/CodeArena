@@ -8,11 +8,12 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react';
-import type {ApiUser, TournamentListItem, TournamentPlayResponse} from '../types';
+import type {ApiUser, TournamentLeaderboardResponse, TournamentListItem, TournamentPlayResponse} from '../types';
 import {
   completeTournamentParticipant,
   createTournament,
   finishTournament,
+  getTournamentLeaderboard,
   getTournamentPlay,
   getTournamentSummary,
   goLiveTournament,
@@ -24,7 +25,7 @@ import {
 } from '../api';
 import {CodeEditor} from '../components/CodeEditor';
 
-type View = 'list' | 'play' | 'summary' | 'review';
+type View = 'list' | 'play' | 'summary' | 'review' | 'leaderboard';
 
 export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
   const [ view, setView ] = useState<View>('list');
@@ -46,6 +47,8 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
   const [ summaryRows, setSummaryRows ] = useState<Awaited<ReturnType<typeof getTournamentSummary>>['tasks']>([]);
   const [ reviewRows, setReviewRows ] = useState<Awaited<ReturnType<typeof listTournamentSubmissions>>>([]);
   const [ reviewBusyId, setReviewBusyId ] = useState<number | null>(null);
+  const [ leaderboard, setLeaderboard ] = useState<TournamentLeaderboardResponse | null>(null);
+  const [ leaderboardLoading, setLeaderboardLoading ] = useState(false);
 
   const isAdmin = user?.role === 'admin';
 
@@ -53,13 +56,13 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
     setError(null);
     setLoading(true);
     try {
-      setTournaments(await listTournaments());
+      setTournaments(await listTournaments(user?.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     void reloadList();
@@ -101,6 +104,21 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
       setSummaryRows([]);
     }
   };
+
+  const openLeaderboard = useCallback(async (id: string) => {
+    setActiveId(id);
+    setView('leaderboard');
+    setLeaderboard(null);
+    setLeaderboardLoading(true);
+    setError(null);
+    try {
+      setLeaderboard(await getTournamentLeaderboard(id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  }, []);
 
   const openReview = async (id: string) => {
     if (!user) return;
@@ -168,8 +186,30 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
             <p className="text-on-surface-variant mt-2">{play.message}</p>
           </section>
         ) : play.phase === 'finished' ? (
-          <section className="bg-surface-container-low rounded-xl p-8 border border-outline-variant/5">
+          <section className="bg-surface-container-low rounded-xl p-8 border border-outline-variant/5 space-y-4">
             <p className="text-on-surface-variant">{play.message}</p>
+            <p className="text-sm text-on-surface">
+              Турнир завершён администратором. Доступны итоговая таблица
+              {user ? ' и ваши отправленные решения с оценками' : ''}.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => void openLeaderboard(activeId)}
+                className="px-6 py-3 rounded-xl bg-primary text-on-primary-container font-bold transition-all duration-200 hover:brightness-110 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+              >
+                Таблица результатов
+              </button>
+              {user ? (
+                <button
+                  type="button"
+                  onClick={() => void openSummary(activeId)}
+                  className="px-6 py-3 rounded-xl bg-surface-container-highest text-on-surface font-bold border border-outline-variant/20 transition-all duration-200 hover:border-primary/40 hover:bg-primary/10"
+                >
+                  Мои итоги
+                </button>
+              ) : null}
+            </div>
           </section>
         ) : play.phase === 'done' ? (
           <section className="space-y-4">
@@ -296,6 +336,77 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
     );
   }
 
+  if (view === 'leaderboard' && activeId) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-8 max-w-3xl mx-auto w-full space-y-6">
+        <button
+          type="button"
+          onClick={() => {
+            setView('list');
+            setActiveId(null);
+            setLeaderboard(null);
+          }}
+          className="inline-flex items-center gap-2 text-sm text-on-surface-variant hover:text-primary font-bold rounded-lg px-2 py-1 -ml-2 transition-colors duration-200 hover:bg-primary/10"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          К списку турниров
+        </button>
+        <div>
+          <h3 className="text-xl font-bold text-on-surface">Таблица результатов</h3>
+          {leaderboard ? (
+            <p className="text-sm text-on-surface-variant mt-1">
+              {leaderboard.tournamentName} — засчитанные задачи (PASS) из {leaderboard.taskCount}. При равном числе решённых
+              задач выше тот, кто раньше завершил турнир по своей части; при равенстве — у кого раньше последняя отправка.
+            </p>
+          ) : null}
+        </div>
+        {leaderboardLoading ? (
+          <div className="flex items-center gap-2 text-on-surface-variant py-8">
+            <Loader2 className="w-6 h-6 animate-spin" />
+            Загрузка…
+          </div>
+        ) : leaderboard && leaderboard.rows.length > 0 ? (
+          <div className="rounded-xl border border-outline-variant/10 overflow-hidden bg-surface-container-low">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-outline-variant/10 bg-surface-container-highest/50 text-left text-on-surface-variant text-xs uppercase tracking-wider">
+                  <th className="p-3 font-bold w-14">#</th>
+                  <th className="p-3 font-bold">Участник</th>
+                  <th className="p-3 font-bold text-right">Решено</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leaderboard.rows.map((row) => {
+                  const isSelf = user != null && String(row.userId) === String(user.id);
+                  return (
+                    <tr
+                      key={row.userId}
+                      className={`border-b border-outline-variant/5 last:border-0 ${
+                        isSelf ? 'bg-primary/10' : ''
+                      }`}
+                    >
+                      <td className="p-3 font-black text-primary">{row.rank}</td>
+                      <td className={`p-3 ${isSelf ? 'font-bold text-on-surface' : 'text-on-surface'}`}>
+                        {row.username}
+                        {isSelf ? <span className="ml-2 text-xs font-normal text-primary">(вы)</span> : null}
+                      </td>
+                      <td className="p-3 text-right font-mono text-on-surface">
+                        {row.passCount}/{row.taskCount}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : leaderboard ? (
+          <p className="text-on-surface-variant text-sm">Участников пока нет.</p>
+        ) : null}
+        {error ? <div className="text-error text-sm whitespace-pre-wrap">{error}</div> : null}
+      </motion.div>
+    );
+  }
+
   if (view === 'review' && activeId && user && isAdmin) {
     return (
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-8 max-w-5xl mx-auto w-full space-y-6">
@@ -321,10 +432,13 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                 <span className="text-xs font-bold">{r.reviewStatus}</span>
               </div>
               <pre className="text-xs font-mono bg-black/20 rounded-lg p-3 max-h-40 overflow-auto custom-scrollbar whitespace-pre-wrap">{r.code}</pre>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {r.reviewStatus === 'PASS' || r.reviewStatus === 'FAIL' ? (
+                  <span className="text-[10px] uppercase text-on-surface-variant">Оценка выставлена — кнопки ниже неактивны</span>
+                ) : null}
                 <button
                   type="button"
-                  disabled={reviewBusyId === r.id}
+                  disabled={reviewBusyId === r.id || r.reviewStatus === 'PASS' || r.reviewStatus === 'FAIL'}
                   onClick={async () => {
                     setReviewBusyId(r.id);
                     try {
@@ -334,13 +448,13 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                       setReviewBusyId(null);
                     }
                   }}
-                  className="px-3 py-1.5 rounded-lg bg-primary/20 text-primary text-xs font-bold transition-all duration-200 hover:bg-primary/35 hover:ring-2 hover:ring-primary/30 disabled:opacity-50 disabled:hover:bg-primary/20 disabled:hover:ring-0"
+                  className="px-3 py-1.5 rounded-lg bg-primary/20 text-primary text-xs font-bold transition-all duration-200 hover:bg-primary/35 hover:ring-2 hover:ring-primary/30 disabled:opacity-35 disabled:grayscale disabled:cursor-not-allowed disabled:hover:bg-primary/20 disabled:hover:ring-0"
                 >
                   PASS
                 </button>
                 <button
                   type="button"
-                  disabled={reviewBusyId === r.id}
+                  disabled={reviewBusyId === r.id || r.reviewStatus === 'PASS' || r.reviewStatus === 'FAIL'}
                   onClick={async () => {
                     setReviewBusyId(r.id);
                     try {
@@ -350,7 +464,7 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                       setReviewBusyId(null);
                     }
                   }}
-                  className="px-3 py-1.5 rounded-lg bg-error/15 text-error text-xs font-bold transition-all duration-200 hover:bg-error/30 hover:ring-2 hover:ring-error/35 disabled:opacity-50 disabled:hover:bg-error/15 disabled:hover:ring-0"
+                  className="px-3 py-1.5 rounded-lg bg-error/15 text-error text-xs font-bold transition-all duration-200 hover:bg-error/30 hover:ring-2 hover:ring-error/35 disabled:opacity-35 disabled:grayscale disabled:cursor-not-allowed disabled:hover:bg-error/15 disabled:hover:ring-0"
                 >
                   FAIL
                 </button>
@@ -487,7 +601,9 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
               <div className="flex-1 min-w-[200px]">
                 <div className="font-bold text-on-surface">{t.name}</div>
                 <div className="text-xs text-on-surface-variant">
-                  {statusRu(t.status)} • Задач: {t.taskCount}
+                  <span className={t.status === 'finished' ? 'text-primary font-bold' : ''}>{statusRu(t.status)}</span>
+                  {' '}
+                  • Задач: {t.taskCount}
                   {t.status === 'pending' ? ' • условия скрыты до старта' : ''}
                 </div>
               </div>
@@ -536,7 +652,30 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                   Проверка работ
                 </button>
               ) : null}
-              {user ? (
+              {t.status === 'finished' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void openLeaderboard(t.id)}
+                    className="px-3 py-2 rounded-lg bg-primary/20 text-primary text-xs font-bold inline-flex items-center gap-1 transition-all duration-200 hover:bg-primary/35 hover:ring-2 hover:ring-primary/25"
+                  >
+                    Таблица результатов
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  {user && t.joined ? (
+                    <button
+                      type="button"
+                      onClick={() => void openSummary(t.id)}
+                      className="px-3 py-2 rounded-lg bg-surface-container-highest text-xs font-bold text-on-surface border border-outline-variant/20 transition-all duration-200 hover:border-primary/40 hover:bg-primary/10"
+                    >
+                      Мои итоги
+                    </button>
+                  ) : null}
+                  {!user ? (
+                    <span className="text-xs text-on-surface-variant">Войдите, чтобы видеть свои итоги</span>
+                  ) : null}
+                </>
+              ) : user ? (
                 <>
                   <button
                     type="button"
@@ -555,8 +694,12 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                   </button>
                   <button
                     type="button"
+                    disabled={!t.joined}
+                    title={
+                      t.joined ? 'Открыть решение задач турнира' : 'Сначала нажмите «Присоединиться»'
+                    }
                     onClick={() => openPlay(t.id)}
-                    className="px-3 py-2 rounded-lg bg-surface-container-highest text-xs font-bold inline-flex items-center gap-1 text-primary border border-transparent transition-all duration-200 hover:bg-primary/15 hover:border-primary/30 hover:shadow-sm"
+                    className="px-3 py-2 rounded-lg bg-surface-container-highest text-xs font-bold inline-flex items-center gap-1 text-primary border border-transparent transition-all duration-200 hover:bg-primary/15 hover:border-primary/30 hover:shadow-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-surface-container-highest disabled:hover:border-transparent disabled:hover:shadow-none"
                   >
                     Решать
                     <ChevronRight className="w-4 h-4" />

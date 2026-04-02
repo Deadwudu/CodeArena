@@ -727,6 +727,7 @@ app.post("/api/admin/tournaments/:id/finish", async (req, res) => {
 
 app.get("/api/tournaments", async (req, res) => {
     try {
+        const userId = req.query.userId ? String(req.query.userId).trim() : ""
         const { data, error } = await supabase
             .from("tournaments")
             .select("id, name, status, started_at, finished_at, created_at")
@@ -741,6 +742,16 @@ app.get("/api/tournaments", async (req, res) => {
                 taskCounts.set(t.tournament_id, (taskCounts.get(t.tournament_id) ?? 0) + 1)
             }
         }
+        const joinedSet = new Set()
+        if (userId && ids.length) {
+            const { data: parts, error: pErr } = await supabase
+                .from("tournament_participants")
+                .select("tournament_id")
+                .eq("user_id", userId)
+                .in("tournament_id", ids)
+            if (pErr) throw pErr
+            for (const p of parts ?? []) joinedSet.add(p.tournament_id)
+        }
         res.json(
             rows.map((r) => ({
                 id: r.id,
@@ -750,8 +761,102 @@ app.get("/api/tournaments", async (req, res) => {
                 finishedAt: r.finished_at,
                 createdAt: r.created_at,
                 taskCount: taskCounts.get(r.id) ?? 0,
+                joined: userId ? joinedSet.has(r.id) : false,
             })),
         )
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+/** Таблица результатов: только для status === finished. Места 1…n по числу PASS, при равенстве — раньше завершивший турнир (completed_at), иначе раньше последняя отправка. */
+app.get("/api/tournaments/:id/leaderboard", async (req, res) => {
+    try {
+        const tournamentId = req.params.id
+        const { data: tour, error: tErr } = await supabase.from("tournaments").select("id, name, status").eq("id", tournamentId).maybeSingle()
+        if (tErr) throw tErr
+        if (!tour) {
+            res.status(404).json({ error: "не найден" })
+            return
+        }
+        if (tour.status !== "finished") {
+            res.status(403).json({ error: "Таблица результатов доступна после завершения турнира" })
+            return
+        }
+
+        const ordered = await getOrderedTournamentTasks(tournamentId)
+        const taskCount = ordered.length
+
+        const { data: parts, error: pErr } = await supabase
+            .from("tournament_participants")
+            .select("user_id, joined_at, completed_at")
+            .eq("tournament_id", tournamentId)
+        if (pErr) throw pErr
+
+        const { data: subs, error: sErr } = await supabase
+            .from("tournament_submissions")
+            .select("user_id, review_status, submitted_at")
+            .eq("tournament_id", tournamentId)
+        if (sErr) throw sErr
+
+        const userIds = [...new Set((parts ?? []).map((p) => p.user_id))]
+        const userMap = new Map()
+        if (userIds.length) {
+            const { data: users } = await supabase.from("users").select("id, username").in("id", userIds)
+            for (const u of users ?? []) userMap.set(u.id, u.username)
+        }
+
+        const byUser = new Map()
+        for (const p of parts ?? []) {
+            byUser.set(p.user_id, {
+                completedAt: p.completed_at ? new Date(p.completed_at).getTime() : null,
+                joinedAt: p.joined_at ? new Date(p.joined_at).getTime() : 0,
+            })
+        }
+
+        const passCount = new Map()
+        const maxSubmitted = new Map()
+        for (const s of subs ?? []) {
+            const uid = s.user_id
+            if (s.review_status === "PASS") {
+                passCount.set(uid, (passCount.get(uid) ?? 0) + 1)
+            }
+            const t = new Date(s.submitted_at).getTime()
+            maxSubmitted.set(uid, Math.max(maxSubmitted.get(uid) ?? 0, t))
+        }
+
+        const rows = userIds.map((userId) => ({
+            userId,
+            username: userMap.get(userId) ?? "—",
+            passCount: passCount.get(userId) ?? 0,
+            completedAt: byUser.get(userId)?.completedAt ?? null,
+            maxSubmitted: maxSubmitted.get(userId) ?? null,
+            joinedAt: byUser.get(userId)?.joinedAt ?? 0,
+        }))
+
+        rows.sort((a, b) => {
+            if (b.passCount !== a.passCount) return b.passCount - a.passCount
+            const ca = a.completedAt ?? Number.MAX_SAFE_INTEGER
+            const cb = b.completedAt ?? Number.MAX_SAFE_INTEGER
+            if (ca !== cb) return ca - cb
+            const ma = a.maxSubmitted ?? Number.MAX_SAFE_INTEGER
+            const mb = b.maxSubmitted ?? Number.MAX_SAFE_INTEGER
+            if (ma !== mb) return ma - mb
+            return String(a.userId).localeCompare(String(b.userId))
+        })
+
+        res.json({
+            tournamentId: tour.id,
+            tournamentName: tour.name,
+            taskCount,
+            rows: rows.map((r, i) => ({
+                rank: i + 1,
+                userId: r.userId,
+                username: r.username,
+                passCount: r.passCount,
+                taskCount,
+            })),
+        })
     } catch (e) {
         res.status(500).json({ error: e?.message ?? "db error" })
     }
@@ -1018,13 +1123,26 @@ app.get("/api/tournaments/:id/summary", async (req, res) => {
             return
         }
 
+        const { data: tour, error: tourErr } = await supabase.from("tournaments").select("status").eq("id", tournamentId).maybeSingle()
+        if (tourErr) throw tourErr
+        if (!tour) {
+            res.status(404).json({ error: "турнир не найден" })
+            return
+        }
+
         const { data: part } = await supabase
             .from("tournament_participants")
             .select("completed_at")
             .eq("tournament_id", tournamentId)
             .eq("user_id", userId)
             .maybeSingle()
-        if (!part?.completed_at) {
+        if (!part) {
+            res.status(403).json({ error: "Вы не участник турнира" })
+            return
+        }
+
+        const tournamentFinished = tour.status === "finished"
+        if (!tournamentFinished && !part.completed_at) {
             res.status(400).json({ error: "Сначала завершите турнир на экране решения" })
             return
         }

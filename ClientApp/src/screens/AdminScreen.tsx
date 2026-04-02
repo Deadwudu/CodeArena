@@ -473,26 +473,31 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                           </summary>
                           {(a.result === 'PASS' || a.result === 'FAIL' || a.result === 'ERROR') ? (
                             <div className="px-4 py-3 border-t border-outline-variant/10 flex flex-wrap items-center gap-2 bg-surface-container-high/20">
-                              <span className="text-xs text-on-surface-variant">Ручная оценка (PASS / FAIL):</span>
+                              <span className="text-xs text-on-surface-variant">
+                                Ручная оценка (PASS / FAIL):
+                                {a.result === 'PASS' || a.result === 'FAIL' ? (
+                                  <span className="ml-1 text-on-surface-variant/80">— уже выставлено ({a.result})</span>
+                                ) : null}
+                              </span>
                               <button
                                 type="button"
-                                disabled={patchingId === a.id || a.result === 'PASS'}
+                                disabled={patchingId === a.id || a.result === 'PASS' || a.result === 'FAIL'}
                                 onClick={(e) => {
                                   e.preventDefault();
                                   void overrideAttemptStatus(a, 'PASS');
                                 }}
-                                className="text-xs px-2 py-1 rounded-lg bg-primary/20 text-primary font-bold disabled:opacity-40"
+                                className="text-xs px-2 py-1 rounded-lg bg-primary/20 text-primary font-bold transition-opacity disabled:opacity-35 disabled:grayscale disabled:cursor-not-allowed"
                               >
                                 Засчитать PASS
                               </button>
                               <button
                                 type="button"
-                                disabled={patchingId === a.id || a.result === 'FAIL'}
+                                disabled={patchingId === a.id || a.result === 'PASS' || a.result === 'FAIL'}
                                 onClick={(e) => {
                                   e.preventDefault();
                                   void overrideAttemptStatus(a, 'FAIL');
                                 }}
-                                className="text-xs px-2 py-1 rounded-lg bg-error/15 text-error font-bold disabled:opacity-40"
+                                className="text-xs px-2 py-1 rounded-lg bg-error/15 text-error font-bold transition-opacity disabled:opacity-35 disabled:grayscale disabled:cursor-not-allowed"
                               >
                                 Засчитать FAIL
                               </button>
@@ -560,26 +565,31 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                       </summary>
                       {(a.result === 'PASS' || a.result === 'FAIL' || a.result === 'ERROR') ? (
                         <div className="px-4 py-3 border-t border-outline-variant/10 flex flex-wrap items-center gap-2 bg-surface-container-high/20">
-                          <span className="text-xs text-on-surface-variant">Ручная оценка:</span>
+                          <span className="text-xs text-on-surface-variant">
+                            Ручная оценка:
+                            {a.result === 'PASS' || a.result === 'FAIL' ? (
+                              <span className="ml-1 text-on-surface-variant/80">уже {a.result}</span>
+                            ) : null}
+                          </span>
                           <button
                             type="button"
-                            disabled={patchingId === a.id || a.result === 'PASS'}
+                            disabled={patchingId === a.id || a.result === 'PASS' || a.result === 'FAIL'}
                             onClick={(e) => {
                               e.preventDefault();
                               void overrideAttemptStatus(a, 'PASS');
                             }}
-                            className="text-xs px-2 py-1 rounded-lg bg-primary/20 text-primary font-bold disabled:opacity-40"
+                            className="text-xs px-2 py-1 rounded-lg bg-primary/20 text-primary font-bold transition-opacity disabled:opacity-35 disabled:grayscale disabled:cursor-not-allowed"
                           >
                             PASS
                           </button>
                           <button
                             type="button"
-                            disabled={patchingId === a.id || a.result === 'FAIL'}
+                            disabled={patchingId === a.id || a.result === 'PASS' || a.result === 'FAIL'}
                             onClick={(e) => {
                               e.preventDefault();
                               void overrideAttemptStatus(a, 'FAIL');
                             }}
-                            className="text-xs px-2 py-1 rounded-lg bg-error/15 text-error font-bold disabled:opacity-40"
+                            className="text-xs px-2 py-1 rounded-lg bg-error/15 text-error font-bold transition-opacity disabled:opacity-35 disabled:grayscale disabled:cursor-not-allowed"
                           >
                             FAIL
                           </button>

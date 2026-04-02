@@ -10,6 +10,8 @@ export interface TournamentListItem {
   finishedAt: string | null;
   createdAt: string;
   taskCount: number;
+  /** Участие текущего пользователя (нужен query userId в GET /api/tournaments) */
+  joined: boolean;
 }
 
 export interface TournamentTaskPayload {
@@ -29,6 +31,34 @@ export interface TournamentDetail {
   taskCount: number;
   tasks: TournamentTaskPayload[];
   tasksHiddenUntilLive?: boolean;
+}
+
+export type TournamentPlayResponse =
+  | {phase: 'waiting'; tournamentName: string; message: string}
+  | {
+      phase: 'task';
+      tournamentName: string;
+      taskIndex: number;
+      taskCount: number;
+      task: {id: string; title: string; description: string};
+    }
+  | {phase: 'await_complete'; tournamentName: string; taskCount: number}
+  | {phase: 'done'; tournamentName: string; completedAt: string}
+  | {phase: 'finished'; tournamentName: string; message: string};
+
+export interface TournamentLeaderboardRow {
+  rank: number;
+  userId: string;
+  username: string;
+  passCount: number;
+  taskCount: number;
+}
+
+export interface TournamentLeaderboardResponse {
+  tournamentId: string;
+  tournamentName: string;
+  taskCount: number;
+  rows: TournamentLeaderboardRow[];
 }
 
 export type AuthMode = 'login' | 'register';
