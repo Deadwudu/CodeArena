@@ -34,7 +34,7 @@ export const TopBar: React.FC<TopBarProps> = ({
       case 'admin':
         return 'Админка';
       case 'auth':
-        return user ? 'Аккаунт' : 'Вход';
+        return user ? 'Профиль' : 'Вход';
       default:
         return 'CodeArena';
     }
@@ -113,7 +113,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 type="button"
                 onClick={() => onScreenChange('auth')}
                 className="w-9 h-9 rounded-full bg-surface-container-low border border-outline-variant/20 hover:border-primary/40 transition-colors"
-                aria-label="Аккаунт"
+                aria-label="Профиль"
               />
               <button
                 type="button"

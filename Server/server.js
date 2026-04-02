@@ -35,6 +35,19 @@ function mapAttempt(row) {
     }
 }
 
+/** Для статистики: на каждую пару (пользователь|гость, задача) — только последняя по времени попытка. */
+function lastAttemptsPerUserTask(attempts) {
+    const best = new Map()
+    for (const a of attempts ?? []) {
+        const uid = a.user_id ?? "__guest__"
+        const key = `${uid}::${a.task_id}`
+        const t = new Date(a.created_at).getTime()
+        const prev = best.get(key)
+        if (!prev || t > new Date(prev.created_at).getTime()) best.set(key, a)
+    }
+    return [...best.values()]
+}
+
 async function getUserById(userId) {
     const { data: user, error } = await supabase.from("users").select("id, username, role_id").eq("id", userId).maybeSingle()
     if (error) throw error
@@ -306,6 +319,53 @@ app.get("/api/attempts/:taskId", async (req, res) => {
     }
 })
 
+/** Статистика пользователя: PASS/FAIL/ERROR по последней попытке на каждую задачу + всего отправок. */
+app.get("/api/user/stats", async (req, res) => {
+    try {
+        const userId = req.query.userId ? String(req.query.userId).trim() : ""
+        if (!userId) {
+            res.status(400).json({ error: "userId обязателен" })
+            return
+        }
+
+        const { data: attempts, error } = await supabase
+            .from("attempts")
+            .select("task_id, status_code, created_at")
+            .eq("user_id", userId)
+        if (error) throw error
+
+        const all = attempts ?? []
+        const totalSubmissions = all.length
+
+        const byTask = new Map()
+        for (const a of all) {
+            const t = new Date(a.created_at).getTime()
+            const prev = byTask.get(a.task_id)
+            if (!prev || t > new Date(prev.created_at).getTime()) byTask.set(a.task_id, a)
+        }
+        const last = [...byTask.values()]
+
+        let pass = 0
+        let fail = 0
+        let err = 0
+        for (const a of last) {
+            if (a.status_code === "PASS") pass++
+            else if (a.status_code === "FAIL") fail++
+            else if (a.status_code === "ERROR") err++
+        }
+
+        res.json({
+            pass,
+            fail,
+            error: err,
+            tasksConsidered: last.length,
+            totalSubmissions,
+        })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
 app.get("/api/admin/users-stats", async (req, res) => {
     try {
         const adminId = req.query.userId ? String(req.query.userId).trim() : ""
@@ -324,26 +384,37 @@ app.get("/api/admin/users-stats", async (req, res) => {
         if (rErr) throw rErr
         const roleById = new Map((roles ?? []).map((r) => [r.id, r.code]))
 
-        const { data: attempts, error: aErr } = await supabase.from("attempts").select("user_id, status_code, task_id")
+        const { data: attempts, error: aErr } = await supabase
+            .from("attempts")
+            .select("user_id, status_code, task_id, created_at")
         if (aErr) throw aErr
 
-        /** @type {Map<string, { total: number; pass: number; fail: number; error: number; tasks: Set<string> }>} */
-        const statsByUser = new Map()
+        /** Всего отправок (все попытки), по пользователю */
+        /** @type {Map<string, number>} */
+        const totalSubmissionsByUser = new Map()
         for (const a of attempts ?? []) {
             const key = a.user_id ?? "__guest__"
+            totalSubmissionsByUser.set(key, (totalSubmissionsByUser.get(key) ?? 0) + 1)
+        }
+
+        const lastOnly = lastAttemptsPerUserTask(attempts ?? [])
+
+        /** @type {Map<string, { pass: number; fail: number; error: number; tasks: Set<string> }>} */
+        const statsByUser = new Map()
+        for (const a of lastOnly) {
+            const key = a.user_id ?? "__guest__"
             if (!statsByUser.has(key)) {
-                statsByUser.set(key, { total: 0, pass: 0, fail: 0, error: 0, tasks: new Set() })
+                statsByUser.set(key, { pass: 0, fail: 0, error: 0, tasks: new Set() })
             }
             const s = statsByUser.get(key)
-            s.total++
             if (a.status_code === "PASS") s.pass++
             else if (a.status_code === "FAIL") s.fail++
             else if (a.status_code === "ERROR") s.error++
             s.tasks.add(a.task_id)
         }
 
-        const pack = (s) => ({
-            attemptCount: s.total,
+        const pack = (userKey, s) => ({
+            attemptCount: totalSubmissionsByUser.get(userKey) ?? 0,
             passCount: s.pass,
             failCount: s.fail,
             errorCount: s.error,
@@ -351,13 +422,13 @@ app.get("/api/admin/users-stats", async (req, res) => {
         })
 
         const rows = (users ?? []).map((u) => {
-            const s = statsByUser.get(u.id) ?? { total: 0, pass: 0, fail: 0, error: 0, tasks: new Set() }
+            const s = statsByUser.get(u.id) ?? { pass: 0, fail: 0, error: 0, tasks: new Set() }
             return {
                 id: u.id,
                 username: u.username,
                 role: roleById.get(u.role_id) ?? "user",
                 createdAt: u.created_at,
-                ...pack(s),
+                ...pack(u.id, s),
             }
         })
 
@@ -370,7 +441,7 @@ app.get("/api/admin/users-stats", async (req, res) => {
                       username: "(без аккаунта)",
                       role: "guest",
                       createdAt: null,
-                      ...pack(guest),
+                      ...pack("__guest__", guest),
                   },
               ]
             : rows

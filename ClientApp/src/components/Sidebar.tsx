@@ -16,7 +16,7 @@ export const Sidebar: React.FC<SidebarProps> = ({currentScreen, onScreenChange, 
     {id: 'attempts', label: 'Мои попытки', icon: BarChart3},
     {id: 'solve', label: 'Решение', icon: Terminal},
     {id: 'admin', label: 'Админка', icon: Shield},
-    {id: 'auth', label: user ? 'Аккаунт' : 'Вход', icon: LogIn},
+    {id: 'auth', label: user ? 'Профиль' : 'Вход', icon: LogIn},
   ];
 
   return (

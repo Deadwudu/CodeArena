@@ -15,7 +15,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({currentScreen, onScreenChan
     {id: 'solve', icon: Terminal, label: 'Код'},
     {id: 'attempts', icon: BarChart3, label: 'Попытки'},
     {id: 'admin', icon: Shield, label: 'Админ', hidden: user?.role !== 'admin'},
-    {id: 'auth', icon: LogIn, label: 'Вход'},
+    {id: 'auth', icon: LogIn, label: user ? 'Профиль' : 'Вход'},
   ];
 
   return (

@@ -1,4 +1,4 @@
-import type {AdminUserStat, ApiAttempt, ApiAttemptWithUser, ApiTask, ApiUser} from './types';
+import type {AdminUserStat, ApiAttempt, ApiAttemptWithUser, ApiTask, ApiUser, UserStatsSummary} from './types';
 
 /** Продакшен: URL Node-сервера с /api (без слэша в конце), напр. https://codearena.onrender.com */
 const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN as string | undefined)?.replace(/\/$/, '') ?? '';
@@ -62,6 +62,10 @@ export function getTasks() {
 
 export function getTask(id: string) {
   return request<ApiTask>(`/api/tasks/${encodeURIComponent(id)}`);
+}
+
+export function getUserStats(userId: number | string) {
+  return request<UserStatsSummary>(`/api/user/stats?userId=${encodeURIComponent(String(userId))}`);
 }
 
 export function getAttempts(taskId?: string, userId?: number | string | null) {

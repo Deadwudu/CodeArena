@@ -351,7 +351,10 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
         <>
           <section className="bg-surface-container-low rounded-xl p-8 border border-outline-variant/5">
             <h4 className="text-lg font-bold text-on-surface mb-1">Статистика пользователей</h4>
-            <p className="text-xs text-on-surface-variant mb-4">Попытки и результаты по каждому аккаунту (и без аккаунта).</p>
+            <p className="text-xs text-on-surface-variant mb-4">
+              Столбцы PASS / FAIL / Ошибок / Задач считаются по <strong>последней попытке на каждую задачу</strong>. Колонка «Попыток» — всего отправок (все попытки),
+              включая пересдачи.
+            </p>
 
             {loadingStats ? (
               <div className="flex items-center gap-2 text-on-surface-variant">

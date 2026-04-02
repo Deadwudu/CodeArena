@@ -47,3 +47,12 @@ export interface ApiAttemptWithUser extends ApiAttempt {
   username?: string;
 }
 
+/** Соотношение результатов по последней попытке на каждую задачу. */
+export interface UserStatsSummary {
+  pass: number;
+  fail: number;
+  error: number;
+  tasksConsidered: number;
+  totalSubmissions: number;
+}
+
