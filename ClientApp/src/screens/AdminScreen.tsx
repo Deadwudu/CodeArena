@@ -12,6 +12,7 @@ import {
   getTasks,
   patchAdminAttemptStatus,
 } from '../api';
+import {CodeEditor} from '../components/CodeEditor';
 
 type CaseRow = { args: string; expect: string };
 
@@ -687,11 +688,13 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
               <div className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold mb-2">
                 Эталонный код (ваше решение, внутри QuickJS — без require, Node, DOM)
               </div>
-              <textarea
+              <CodeEditor
                 value={referenceCode}
-                onChange={(e) => setReferenceCode(e.target.value)}
+                onChange={setReferenceCode}
+                language="javascript"
+                height="192px"
                 placeholder={`function sum(a, b) {\n  return a + b;\n}`}
-                className="w-full min-h-32 bg-surface-container-low border border-outline-variant/20 rounded-lg px-3 py-2 text-xs font-mono text-on-surface focus:ring-1 focus:ring-primary outline-none custom-scrollbar"
+                className="w-full text-xs [&_.cm-editor]:text-xs"
               />
             </label>
           </div>
@@ -716,26 +719,22 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                 >
                   <label className="block min-w-0">
                     <div className="text-[10px] text-on-surface-variant mb-1">Аргументы (JSON-массив)</div>
-                    <textarea
+                    <CodeEditor
                       value={row.args}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setCaseRows((prev) => prev.map((r, i) => (i === idx ? { ...r, args: v } : r)));
-                      }}
-                      rows={2}
-                      className="w-full bg-surface-container-low border border-outline-variant/20 rounded-lg px-2 py-1.5 text-xs font-mono text-on-surface outline-none"
+                      onChange={(v) => setCaseRows((prev) => prev.map((r, i) => (i === idx ? { ...r, args: v } : r)))}
+                      language="json"
+                      height="88px"
+                      className="w-full text-xs [&_.cm-editor]:text-xs [&_.cm-gutters]:min-w-[28px]"
                     />
                   </label>
                   <label className="block min-w-0">
                     <div className="text-[10px] text-on-surface-variant mb-1">Ожидаемый результат (JSON)</div>
-                    <textarea
+                    <CodeEditor
                       value={row.expect}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setCaseRows((prev) => prev.map((r, i) => (i === idx ? { ...r, expect: v } : r)));
-                      }}
-                      rows={2}
-                      className="w-full bg-surface-container-low border border-outline-variant/20 rounded-lg px-2 py-1.5 text-xs font-mono text-on-surface outline-none"
+                      onChange={(v) => setCaseRows((prev) => prev.map((r, i) => (i === idx ? { ...r, expect: v } : r)))}
+                      language="json"
+                      height="88px"
+                      className="w-full text-xs [&_.cm-editor]:text-xs [&_.cm-gutters]:min-w-[28px]"
                     />
                   </label>
                   <button

@@ -4,6 +4,7 @@ import {ArrowRight, ChevronDown, ChevronRight, CloudUpload, FileCode, Loader2, P
 import type {ApiAttempt, ApiTask, ApiUser} from '../types';
 import {getAttempts, getTask, getTasks, runSolution} from '../api';
 import {cn} from '../lib/utils';
+import {CodeEditor} from '../components/CodeEditor';
 
 const starterByTaskId: Record<string, string> = {
   sum: `function sum(a, b) {\n  return a + b;\n}\n`,
@@ -172,18 +173,12 @@ export const SolveScreen: React.FC<{
           </div>
         </div>
 
-        <div className="flex-1 flex overflow-hidden font-mono text-sm relative">
-          <div className="w-12 bg-surface-container-lowest flex flex-col items-end pr-3 py-4 text-on-surface-variant/30 select-none border-r border-outline-variant/5">
-            {Array.from({length: Math.max(16, code.split('\n').length)}).map((_, i) => (
-              <span key={i}>{i + 1}</span>
-            ))}
-          </div>
-          <textarea
-            className="flex-1 py-4 px-4 bg-transparent border-none focus:ring-0 text-on-surface-variant leading-relaxed resize-none custom-scrollbar"
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <CodeEditor
             value={code}
-            onChange={(e) => setCode(e.target.value)}
-            spellCheck={false}
-            placeholder="// напишите решение"
+            onChange={setCode}
+            height="calc(100vh - 64px - 3rem - 30vh)"
+            className="min-h-[240px] h-full [&_.cm-editor]:outline-none [&_.cm-focused]:outline-none"
           />
         </div>
 

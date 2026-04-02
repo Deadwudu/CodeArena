@@ -22,6 +22,7 @@ import {
   patchTournamentSubmission,
   submitTournamentTask,
 } from '../api';
+import {CodeEditor} from '../components/CodeEditor';
 
 type View = 'list' | 'play' | 'summary' | 'review';
 
@@ -216,12 +217,13 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
             <div className="text-sm text-on-surface-variant whitespace-pre-wrap border-l-2 border-primary/40 pl-4">{play.task.description}</div>
             <div>
               <div className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold mb-2">Ваше решение (текст кода)</div>
-              <textarea
+              <CodeEditor
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
-                rows={14}
+                onChange={setCode}
+                language="javascript"
+                height="320px"
                 placeholder="// Любой язык или псевдокод — проверяет только администратор"
-                className="w-full bg-surface-container border border-outline-variant/20 rounded-lg px-3 py-2 text-sm font-mono text-on-surface outline-none custom-scrollbar"
+                className="w-full [&_.cm-editor]:text-sm"
               />
             </div>
             {error ? <div className="text-error text-sm">{error}</div> : null}
