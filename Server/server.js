@@ -62,7 +62,7 @@ async function expireLiveTournaments() {
     const now = new Date().toISOString()
     const { data: expiring, error: selErr } = await supabase
         .from("tournaments")
-        .select("id, name")
+        .select("id, name, created_by")
         .eq("status", "live")
         .not("ends_at", "is", null)
         .lte("ends_at", now)
@@ -81,12 +81,17 @@ async function expireLiveTournaments() {
         return
     }
     for (const t of expiring) {
-        await notifyTournamentParticipants(t.id, {
-            title: `«${t.name}»: турнир завершён`,
-            body: "Время турнира истекло. Спасибо за участие!",
-            link_kind: "tournament",
-            link_id: String(t.id),
-        })
+        const excl = t.created_by ? [String(t.created_by)] : []
+        await notifyTournamentParticipants(
+            t.id,
+            {
+                title: `«${t.name}»: турнир завершён`,
+                body: "Время турнира истекло. Спасибо за участие!",
+                link_kind: "tournament",
+                link_id: String(t.id),
+            },
+            excl,
+        )
     }
 }
 
@@ -104,9 +109,10 @@ async function ensureAdmin(userId) {
     return true
 }
 
-/** @param {string[]} userIds */
-async function insertNotificationsForUsers(userIds, notification) {
-    const unique = [...new Set(userIds.filter(Boolean))]
+/** @param {string[]} userIds @param {{ title?: string, body?: string|null, link_kind?: string|null, link_id?: string|null }} notification @param {string[]} [excludeUserIds] */
+async function insertNotificationsForUsers(userIds, notification, excludeUserIds = []) {
+    const exclude = new Set((excludeUserIds ?? []).filter(Boolean).map((x) => String(x)))
+    const unique = [...new Set(userIds.filter(Boolean).map((id) => String(id)).filter((id) => !exclude.has(id)))]
     if (!unique.length) return
     const title = String(notification.title ?? "").trim().slice(0, 500) || "Уведомление"
     const body = notification.body != null ? String(notification.body).trim().slice(0, 2000) : null
@@ -126,7 +132,8 @@ async function insertNotificationsForUsers(userIds, notification) {
     }
 }
 
-async function notifyTournamentParticipants(tournamentId, notification) {
+/** @param {string[]} [excludeUserIds] — не слать (организатор / админ, нажавший старт/финиш) */
+async function notifyTournamentParticipants(tournamentId, notification, excludeUserIds = []) {
     const { data, error } = await supabase
         .from("tournament_participants")
         .select("user_id")
@@ -136,7 +143,7 @@ async function notifyTournamentParticipants(tournamentId, notification) {
         return
     }
     const ids = [...new Set((data ?? []).map((p) => p.user_id).filter(Boolean))]
-    await insertNotificationsForUsers(ids, notification)
+    await insertNotificationsForUsers(ids, notification, excludeUserIds)
 }
 
 async function seedCoreData() {
@@ -747,6 +754,7 @@ app.post("/api/admin/tournaments", async (req, res) => {
                     link_kind: "tournament",
                     link_id: String(tour.id),
                 },
+                [String(userId)],
             )
 
         res.json({ success: true, tournament: tour })
@@ -789,12 +797,16 @@ app.post("/api/admin/tournaments/:id/go-live", async (req, res) => {
             .eq("id", id)
         if (error) throw error
         const endHint = endsAt ? ` Окончание: ${new Date(endsAt).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" })} (МСК).` : ""
-        await notifyTournamentParticipants(id, {
-            title: `«${tour.name}»: турнир начался`,
-            body: `Можно переходить к задачам турнира.${endHint}`,
-            link_kind: "tournament",
-            link_id: String(id),
-        })
+        await notifyTournamentParticipants(
+            id,
+            {
+                title: `«${tour.name}»: турнир начался`,
+                body: `Можно переходить к задачам турнира.${endHint}`,
+                link_kind: "tournament",
+                link_id: String(id),
+            },
+            [String(userId)],
+        )
         res.json({ success: true })
     } catch (e) {
         res.status(500).json({ error: e?.message ?? "db error" })
@@ -811,7 +823,7 @@ app.post("/api/admin/tournaments/:id/finish", async (req, res) => {
         const id = req.params.id
         const { data: tourInfo, error: infoErr } = await supabase
             .from("tournaments")
-            .select("id, name, status")
+            .select("id, name, status, created_by")
             .eq("id", id)
             .maybeSingle()
         if (infoErr) throw infoErr
@@ -829,12 +841,17 @@ app.post("/api/admin/tournaments/:id/finish", async (req, res) => {
             .eq("id", id)
             .in("status", ["pending", "live"])
         if (error) throw error
-        await notifyTournamentParticipants(id, {
-            title: `«${tourInfo.name}»: турнир завершён`,
-            body: "Турнир завершён администратором. Спасибо за участие!",
-            link_kind: "tournament",
-            link_id: String(id),
-        })
+        const excludeFinish = [...new Set([userId, tourInfo.created_by].filter(Boolean).map(String))]
+        await notifyTournamentParticipants(
+            id,
+            {
+                title: `«${tourInfo.name}»: турнир завершён`,
+                body: "Турнир завершён администратором. Спасибо за участие!",
+                link_kind: "tournament",
+                link_id: String(id),
+            },
+            excludeFinish,
+        )
         res.json({ success: true })
     } catch (e) {
         res.status(500).json({ error: e?.message ?? "db error" })
@@ -1408,12 +1425,16 @@ app.patch("/api/admin/tournament-submissions/:submissionId", async (req, res) =>
         const statusRu = status === "PASS" ? "PASS (зачтено)" : "FAIL (не зачтено)"
         let body = `Статус вашего решения в турнире: ${statusRu}.`
         if (adminComment) body += ` Комментарий проверяющего: ${adminComment}`
-        await insertNotificationsForUsers([prev.user_id], {
-            title: `«${ttitle}»: ${status} по решению`,
-            body: body.slice(0, 2000),
-            link_kind: "tournament",
-            link_id: String(prev.tournament_id),
-        })
+        await insertNotificationsForUsers(
+            [prev.user_id],
+            {
+                title: `«${ttitle}»: ${status} по решению`,
+                body: body.slice(0, 2000),
+                link_kind: "tournament",
+                link_id: String(prev.tournament_id),
+            },
+            [adminId],
+        )
 
         res.json({ success: true, status })
     } catch (e) {
