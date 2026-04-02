@@ -60,13 +60,34 @@ function lastAttemptsPerUserTask(attempts) {
 /** Турниры со сроком ends_at переводятся в finished (для таймера без отдельного cron). */
 async function expireLiveTournaments() {
     const now = new Date().toISOString()
-    const { error } = await supabase
+    const { data: expiring, error: selErr } = await supabase
         .from("tournaments")
-        .update({ status: "finished", finished_at: now })
+        .select("id, name")
         .eq("status", "live")
         .not("ends_at", "is", null)
         .lte("ends_at", now)
-    if (error) console.error("expireLiveTournaments:", error.message)
+    if (selErr) {
+        console.error("expireLiveTournaments select:", selErr.message)
+        return
+    }
+    if (!expiring?.length) return
+    const ids = expiring.map((t) => t.id)
+    const { error } = await supabase
+        .from("tournaments")
+        .update({ status: "finished", finished_at: now })
+        .in("id", ids)
+    if (error) {
+        console.error("expireLiveTournaments:", error.message)
+        return
+    }
+    for (const t of expiring) {
+        await notifyTournamentParticipants(t.id, {
+            title: `«${t.name}»: турнир завершён`,
+            body: "Время турнира истекло. Спасибо за участие!",
+            link_kind: "tournament",
+            link_id: String(t.id),
+        })
+    }
 }
 
 async function getUserById(userId) {
@@ -81,6 +102,41 @@ async function ensureAdmin(userId) {
     const user = await getUserById(userId)
     if (!user || user.app_roles?.code !== "admin") return false
     return true
+}
+
+/** @param {string[]} userIds */
+async function insertNotificationsForUsers(userIds, notification) {
+    const unique = [...new Set(userIds.filter(Boolean))]
+    if (!unique.length) return
+    const title = String(notification.title ?? "").trim().slice(0, 500) || "Уведомление"
+    const body = notification.body != null ? String(notification.body).trim().slice(0, 2000) : null
+    const link_kind = notification.link_kind != null ? String(notification.link_kind).trim().slice(0, 64) : null
+    const link_id = notification.link_id != null ? String(notification.link_id).trim().slice(0, 128) : null
+    const rows = unique.map((user_id) => ({
+        user_id,
+        title,
+        body,
+        link_kind,
+        link_id,
+    }))
+    const chunkSize = 300
+    for (let i = 0; i < rows.length; i += chunkSize) {
+        const { error } = await supabase.from("user_notifications").insert(rows.slice(i, i + chunkSize))
+        if (error) console.error("user_notifications insert:", error.message)
+    }
+}
+
+async function notifyTournamentParticipants(tournamentId, notification) {
+    const { data, error } = await supabase
+        .from("tournament_participants")
+        .select("user_id")
+        .eq("tournament_id", tournamentId)
+    if (error) {
+        console.error("notifyTournamentParticipants:", error.message)
+        return
+    }
+    const ids = [...new Set((data ?? []).map((p) => p.user_id).filter(Boolean))]
+    await insertNotificationsForUsers(ids, notification)
 }
 
 async function seedCoreData() {
@@ -680,6 +736,19 @@ app.post("/api/admin/tournaments", async (req, res) => {
         const { error: insErr } = await supabase.from("tournament_tasks").insert(taskRows)
         if (insErr) throw insErr
 
+        const { data: allUsers, error: nuErr } = await supabase.from("users").select("id")
+        if (nuErr) console.error("users list for notifications:", nuErr.message)
+        else if (allUsers?.length)
+            await insertNotificationsForUsers(
+                allUsers.map((u) => u.id),
+                {
+                    title: "Новый турнир",
+                    body: `Администратор организовал турнир «${tour.name}». Загляните в раздел «Турниры», чтобы присоединиться.`,
+                    link_kind: "tournament",
+                    link_id: String(tour.id),
+                },
+            )
+
         res.json({ success: true, tournament: tour })
     } catch (e) {
         res.status(500).json({ error: e?.message ?? "db error" })
@@ -694,7 +763,7 @@ app.post("/api/admin/tournaments/:id/go-live", async (req, res) => {
             return
         }
         const id = req.params.id
-        const { data: tour, error: fErr } = await supabase.from("tournaments").select("id, status").eq("id", id).maybeSingle()
+        const { data: tour, error: fErr } = await supabase.from("tournaments").select("id, status, name").eq("id", id).maybeSingle()
         if (fErr) throw fErr
         if (!tour) {
             res.status(404).json({ error: "турнир не найден" })
@@ -719,6 +788,13 @@ app.post("/api/admin/tournaments/:id/go-live", async (req, res) => {
             .update({ status: "live", started_at: new Date().toISOString(), ends_at: endsAt })
             .eq("id", id)
         if (error) throw error
+        const endHint = endsAt ? ` Окончание: ${new Date(endsAt).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" })} (МСК).` : ""
+        await notifyTournamentParticipants(id, {
+            title: `«${tour.name}»: турнир начался`,
+            body: `Можно переходить к задачам турнира.${endHint}`,
+            link_kind: "tournament",
+            link_id: String(id),
+        })
         res.json({ success: true })
     } catch (e) {
         res.status(500).json({ error: e?.message ?? "db error" })
@@ -733,12 +809,32 @@ app.post("/api/admin/tournaments/:id/finish", async (req, res) => {
             return
         }
         const id = req.params.id
+        const { data: tourInfo, error: infoErr } = await supabase
+            .from("tournaments")
+            .select("id, name, status")
+            .eq("id", id)
+            .maybeSingle()
+        if (infoErr) throw infoErr
+        if (!tourInfo) {
+            res.status(404).json({ error: "турнир не найден" })
+            return
+        }
+        if (tourInfo.status === "finished") {
+            res.status(400).json({ error: "Турнир уже завершён" })
+            return
+        }
         const { error } = await supabase
             .from("tournaments")
             .update({ status: "finished", finished_at: new Date().toISOString() })
             .eq("id", id)
             .in("status", ["pending", "live"])
         if (error) throw error
+        await notifyTournamentParticipants(id, {
+            title: `«${tourInfo.name}»: турнир завершён`,
+            body: "Турнир завершён администратором. Спасибо за участие!",
+            link_kind: "tournament",
+            link_id: String(id),
+        })
         res.json({ success: true })
     } catch (e) {
         res.status(500).json({ error: e?.message ?? "db error" })
@@ -1309,16 +1405,15 @@ app.patch("/api/admin/tournament-submissions/:submissionId", async (req, res) =>
 
         const { data: tname } = await supabase.from("tournaments").select("name").eq("id", prev.tournament_id).maybeSingle()
         const ttitle = tname?.name ?? "Турнир"
-        let body = `Задача проверена: ${status}`
-        if (adminComment) body += `. Комментарий: ${adminComment}`
-        const ins = await supabase.from("user_notifications").insert({
-            user_id: prev.user_id,
-            title: `${ttitle}: проверка работы`,
+        const statusRu = status === "PASS" ? "PASS (зачтено)" : "FAIL (не зачтено)"
+        let body = `Статус вашего решения в турнире: ${statusRu}.`
+        if (adminComment) body += ` Комментарий проверяющего: ${adminComment}`
+        await insertNotificationsForUsers([prev.user_id], {
+            title: `«${ttitle}»: ${status} по решению`,
             body: body.slice(0, 2000),
             link_kind: "tournament",
             link_id: String(prev.tournament_id),
         })
-        if (ins.error) console.error("user_notifications insert:", ins.error.message)
 
         res.json({ success: true, status })
     } catch (e) {
