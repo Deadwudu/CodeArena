@@ -3,5 +3,10 @@
   "installCommand": "npm install --prefix ClientApp",
   "buildCommand": "npm run build --prefix ClientApp",
   "outputDirectory": "ClientApp/dist",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ]
 }

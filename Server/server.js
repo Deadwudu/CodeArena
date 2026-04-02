@@ -306,6 +306,145 @@ app.get("/api/attempts/:taskId", async (req, res) => {
     }
 })
 
+app.get("/api/admin/users-stats", async (req, res) => {
+    try {
+        const adminId = req.query.userId ? String(req.query.userId).trim() : ""
+        if (!(await ensureAdmin(adminId))) {
+            res.status(403).json({ error: "no access" })
+            return
+        }
+
+        const { data: users, error: uErr } = await supabase
+            .from("users")
+            .select("id, username, created_at, role_id")
+            .order("username", { ascending: true })
+        if (uErr) throw uErr
+
+        const { data: roles, error: rErr } = await supabase.from("app_roles").select("id, code")
+        if (rErr) throw rErr
+        const roleById = new Map((roles ?? []).map((r) => [r.id, r.code]))
+
+        const { data: attempts, error: aErr } = await supabase.from("attempts").select("user_id, status_code, task_id")
+        if (aErr) throw aErr
+
+        /** @type {Map<string, { total: number; pass: number; fail: number; error: number; tasks: Set<string> }>} */
+        const statsByUser = new Map()
+        for (const a of attempts ?? []) {
+            const key = a.user_id ?? "__guest__"
+            if (!statsByUser.has(key)) {
+                statsByUser.set(key, { total: 0, pass: 0, fail: 0, error: 0, tasks: new Set() })
+            }
+            const s = statsByUser.get(key)
+            s.total++
+            if (a.status_code === "PASS") s.pass++
+            else if (a.status_code === "FAIL") s.fail++
+            else if (a.status_code === "ERROR") s.error++
+            s.tasks.add(a.task_id)
+        }
+
+        const pack = (s) => ({
+            attemptCount: s.total,
+            passCount: s.pass,
+            failCount: s.fail,
+            errorCount: s.error,
+            distinctTaskCount: s.tasks.size,
+        })
+
+        const rows = (users ?? []).map((u) => {
+            const s = statsByUser.get(u.id) ?? { total: 0, pass: 0, fail: 0, error: 0, tasks: new Set() }
+            return {
+                id: u.id,
+                username: u.username,
+                role: roleById.get(u.role_id) ?? "user",
+                createdAt: u.created_at,
+                ...pack(s),
+            }
+        })
+
+        const guest = statsByUser.get("__guest__")
+        const out = guest
+            ? [
+                  ...rows,
+                  {
+                      id: null,
+                      username: "(без аккаунта)",
+                      role: "guest",
+                      createdAt: null,
+                      ...pack(guest),
+                  },
+              ]
+            : rows
+
+        res.json({ users: out })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.get("/api/admin/user-attempts", async (req, res) => {
+    try {
+        const adminId = req.query.userId ? String(req.query.userId).trim() : ""
+        if (!(await ensureAdmin(adminId))) {
+            res.status(403).json({ error: "no access" })
+            return
+        }
+        const forUserId = req.query.forUserId !== undefined ? String(req.query.forUserId).trim() : ""
+        if (!forUserId) {
+            res.status(400).json({ error: "forUserId required (uuid с пользователя или __guest__)" })
+            return
+        }
+
+        let q = supabase
+            .from("attempts")
+            .select("id, task_id, user_id, source_code, status_code, created_at")
+            .order("created_at", { ascending: false })
+
+        if (forUserId === "__guest__") q = q.is("user_id", null)
+        else q = q.eq("user_id", forUserId)
+
+        const { data, error } = await q
+        if (error) throw error
+        res.json((data ?? []).map(mapAttempt))
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.get("/api/admin/tasks/:taskId/attempts", async (req, res) => {
+    try {
+        const adminId = req.query.userId ? String(req.query.userId).trim() : ""
+        if (!(await ensureAdmin(adminId))) {
+            res.status(403).json({ error: "no access" })
+            return
+        }
+        const taskId = req.params.taskId
+        const { data: attempts, error } = await supabase
+            .from("attempts")
+            .select("id, task_id, user_id, source_code, status_code, created_at")
+            .eq("task_id", taskId)
+            .order("created_at", { ascending: false })
+        if (error) throw error
+
+        const userIds = [...new Set((attempts ?? []).map((a) => a.user_id).filter(Boolean))]
+        /** @type {Map<string, string>} */
+        const userMap = new Map()
+        if (userIds.length) {
+            const { data: userRows, error: uErr } = await supabase.from("users").select("id, username").in("id", userIds)
+            if (uErr) throw uErr
+            for (const u of userRows ?? []) userMap.set(u.id, u.username)
+        }
+
+        res.json(
+            (attempts ?? []).map((a) => ({
+                ...mapAttempt(a),
+                username: a.user_id ? userMap.get(a.user_id) ?? "—" : "(гость)",
+            })),
+        )
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
 app.post("/api/login", async (req, res) => {
     try {
         const { username, password } = req.body

@@ -1,4 +1,4 @@
-import type {ApiAttempt, ApiTask, ApiUser} from './types';
+import type {AdminUserStat, ApiAttempt, ApiAttemptWithUser, ApiTask, ApiUser} from './types';
 
 /** Продакшен: URL Node-сервера с /api (без слэша в конце), напр. https://codearena.onrender.com */
 const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN as string | undefined)?.replace(/\/$/, '') ?? '';
@@ -8,8 +8,20 @@ function resolveApiUrl(input: RequestInfo | URL): RequestInfo | URL {
   return `${API_ORIGIN}${input.startsWith('/') ? input : `/${input}`}`;
 }
 
+function looksLikeHtml(body: string) {
+  const t = body.trimStart();
+  return t.startsWith('<') || t.toLowerCase().startsWith('<!doctype');
+}
+
 async function request<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
-  const res = await fetch(resolveApiUrl(input), {
+  const url = resolveApiUrl(input);
+  if (typeof input === 'string' && import.meta.env.PROD && !API_ORIGIN && input.startsWith('/api')) {
+    console.warn(
+      '[CodeArena] VITE_API_ORIGIN не задан: запросы /api уходят на тот же хост и не попадут на Node. Задайте переменную в Vercel и пересоберите проект.',
+    );
+  }
+
+  const res = await fetch(url, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -17,8 +29,15 @@ async function request<T>(input: RequestInfo | URL, init?: RequestInit): Promise
     },
   });
 
+  const text = await res.text().catch(() => '');
+
+  if (looksLikeHtml(text)) {
+    throw new Error(
+      'Сервер вернул страницу (HTML), а не JSON. Для деплоя фронта на Vercel укажите в Environment Variables переменную VITE_API_ORIGIN — полный URL вашего бэкенда (Render/Railway/…), без слэша в конце, например https://my-api.onrender.com — затем Redeploy.',
+    );
+  }
+
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
     let msg = text.trim() || `HTTP ${res.status}`;
     try {
       const j = JSON.parse(text) as {error?: string; message?: string};
@@ -30,7 +49,11 @@ async function request<T>(input: RequestInfo | URL, init?: RequestInit): Promise
     throw new Error(msg);
   }
 
-  return (await res.json()) as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Ожидался JSON, получено: ${text.slice(0, 160)}${text.length > 160 ? '…' : ''}`);
+  }
 }
 
 export function getTasks() {
@@ -97,5 +120,24 @@ export function deleteTask(args: {id: string; userId: number | string}) {
     method: 'DELETE',
     body: JSON.stringify({userId: args.userId}),
   });
+}
+
+export function getAdminUsersStats(adminUserId: number | string) {
+  return request<{users: AdminUserStat[]}>(
+    `/api/admin/users-stats?userId=${encodeURIComponent(String(adminUserId))}`,
+  );
+}
+
+export function getAdminTaskAttempts(taskId: string, adminUserId: number | string) {
+  return request<ApiAttemptWithUser[]>(
+    `/api/admin/tasks/${encodeURIComponent(taskId)}/attempts?userId=${encodeURIComponent(String(adminUserId))}`,
+  );
+}
+
+/** forUserId: id пользователя или `__guest__` для попыток без аккаунта */
+export function getAdminUserAttempts(forUserId: string, adminUserId: number | string) {
+  return request<ApiAttempt[]>(
+    `/api/admin/user-attempts?userId=${encodeURIComponent(String(adminUserId))}&forUserId=${encodeURIComponent(forUserId)}`,
+  );
 }
 

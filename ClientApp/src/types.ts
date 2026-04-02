@@ -31,3 +31,19 @@ export interface ApiUser {
   role: Role;
 }
 
+export interface AdminUserStat {
+  id: string | null;
+  username: string;
+  role: string;
+  createdAt: string | null;
+  attemptCount: number;
+  passCount: number;
+  failCount: number;
+  errorCount: number;
+  distinctTaskCount: number;
+}
+
+export interface ApiAttemptWithUser extends ApiAttempt {
+  username?: string;
+}
+
