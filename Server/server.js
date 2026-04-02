@@ -319,7 +319,7 @@ app.get("/api/attempts/:taskId", async (req, res) => {
     }
 })
 
-/** Статистика пользователя: PASS/FAIL/ERROR по последней попытке на каждую задачу + всего отправок. */
+/** Статистика пользователя по всем задачам каталога: успех / провал / нерешённые; по задаче учитывается только последняя попытка. */
 app.get("/api/user/stats", async (req, res) => {
     try {
         const userId = req.query.userId ? String(req.query.userId).trim() : ""
@@ -327,6 +327,11 @@ app.get("/api/user/stats", async (req, res) => {
             res.status(400).json({ error: "userId обязателен" })
             return
         }
+
+        const { data: taskRows, error: taskErr } = await supabase.from("tasks").select("id")
+        if (taskErr) throw taskErr
+        const taskIds = (taskRows ?? []).map((t) => t.id)
+        const totalTasks = taskIds.length
 
         const { data: attempts, error } = await supabase
             .from("attempts")
@@ -343,22 +348,22 @@ app.get("/api/user/stats", async (req, res) => {
             const prev = byTask.get(a.task_id)
             if (!prev || t > new Date(prev.created_at).getTime()) byTask.set(a.task_id, a)
         }
-        const last = [...byTask.values()]
 
         let pass = 0
-        let fail = 0
-        let err = 0
-        for (const a of last) {
-            if (a.status_code === "PASS") pass++
-            else if (a.status_code === "FAIL") fail++
-            else if (a.status_code === "ERROR") err++
+        let failed = 0
+        let unsolved = 0
+        for (const taskId of taskIds) {
+            const last = byTask.get(taskId)
+            if (!last) unsolved++
+            else if (last.status_code === "PASS") pass++
+            else failed++
         }
 
         res.json({
             pass,
-            fail,
-            error: err,
-            tasksConsidered: last.length,
+            failed,
+            unsolved,
+            totalTasks,
             totalSubmissions,
         })
     } catch (e) {
