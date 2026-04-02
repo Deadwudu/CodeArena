@@ -59,39 +59,6 @@ export const TopBar: React.FC<TopBarProps> = ({
       </div>
 
       <div className="flex items-center gap-4">
-        <nav className="hidden lg:flex items-center gap-6 mr-6 h-full">
-          <button
-            type="button"
-            onClick={() => onScreenChange('tasks')}
-            className={[
-              'text-sm font-headline tracking-tight py-1 transition-all',
-              currentScreen === 'tasks' ? 'text-primary font-bold border-b-2 border-primary' : 'text-on-surface-variant hover:text-on-surface',
-            ].join(' ')}
-          >
-            Задачи
-          </button>
-          <button
-            type="button"
-            onClick={() => onScreenChange('attempts')}
-            className={[
-              'text-sm font-headline tracking-tight py-1 transition-all',
-              currentScreen === 'attempts' ? 'text-primary font-bold border-b-2 border-primary' : 'text-on-surface-variant hover:text-on-surface',
-            ].join(' ')}
-          >
-            Попытки
-          </button>
-          <button
-            type="button"
-            onClick={() => onScreenChange('solve')}
-            className={[
-              'text-sm font-headline tracking-tight py-1 transition-all',
-              currentScreen === 'solve' ? 'text-primary font-bold border-b-2 border-primary' : 'text-on-surface-variant hover:text-on-surface',
-            ].join(' ')}
-          >
-            Редактор
-          </button>
-        </nav>
-
         <div className="flex items-center gap-2">
           <button
             type="button"
