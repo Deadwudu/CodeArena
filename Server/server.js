@@ -11,8 +11,6 @@ const legacyClientPath = path.join(__dirname, "../client")
 
 app.use(cors())
 app.use(express.json())
-app.use(express.static(clientDistPath))
-app.use(express.static(legacyClientPath))
 
 function mapTask(row) {
     return {
@@ -1434,6 +1432,9 @@ app.post("/api/register", async (req, res) => {
         res.status(500).json({ error: e?.message ?? "db error" })
     }
 })
+
+app.use(express.static(clientDistPath))
+app.use(express.static(legacyClientPath))
 
 const PORT = process.env.PORT || 3000
 app.listen(PORT, () => {
