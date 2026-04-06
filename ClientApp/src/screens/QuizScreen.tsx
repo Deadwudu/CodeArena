@@ -73,7 +73,7 @@ export const QuizScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
         <div>
           <h1 className="text-2xl font-black font-headline text-on-surface">Теоретический тест</h1>
           <p className="text-sm text-on-surface-variant mt-1">
-            Случайные 20 вопросов из банка. После отправки — разбор: верные ответы зелёным, неверные выбранные — красным.
+            В банке 100 разных вопросов; в одной сессии случайно выбирается 20 без повторений. После отправки — разбор: верно — зелёным, ваш неверный вариант — красным.
           </p>
         </div>
       </div>
@@ -85,7 +85,7 @@ export const QuizScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
       {phase === 'intro' ? (
         <div className="rounded-2xl border border-outline-variant/15 bg-surface-container-low p-8 text-center space-y-6">
           <p className="text-on-surface-variant text-sm">
-            Начать новую сессию. Если у вас была незавершённая попытка, она будет сброшена.
+            Начать новую сессию (20 случайных вопросов из 100, каждый в сессии встречается один раз). Незавершённая попытка будет сброшена.
           </p>
           <button
             type="button"

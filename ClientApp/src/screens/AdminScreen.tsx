@@ -672,7 +672,7 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
           <section className="bg-surface-container-low rounded-xl p-8 border border-outline-variant/5">
             <h4 className="text-lg font-bold text-on-surface mb-1">Теоретический тест</h4>
             <p className="text-xs text-on-surface-variant mb-4">
-              Банк вопросов в Supabase и прохождения пользователей (20 случайных вопросов за сессию).
+              Банк из 100 уникальных вопросов в Supabase; за сессию пользователю — 20 случайных без повторов.
             </p>
             {loadingQuiz ? (
               <div className="flex items-center gap-2 text-on-surface-variant mb-4">

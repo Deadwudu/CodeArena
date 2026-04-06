@@ -482,13 +482,17 @@ app.post("/api/quiz/start", async (req, res) => {
 
         const { data: allQ, error: qErr } = await supabase.from("quiz_questions").select("id")
         if (qErr) throw qErr
-        const ids = (allQ ?? []).map((r) => r.id)
+        const ids = [...new Set((allQ ?? []).map((r) => Number(r.id)))]
         if (ids.length < QUIZ_QUESTIONS_PER_SESSION) {
             res.status(503).json({ error: `В банке меньше ${QUIZ_QUESTIONS_PER_SESSION} вопросов. Выполните SQL supabase-quiz.sql в Supabase.` })
             return
         }
         shuffleInPlace(ids)
         const picked = ids.slice(0, QUIZ_QUESTIONS_PER_SESSION)
+        if (picked.length !== QUIZ_QUESTIONS_PER_SESSION || new Set(picked).size !== picked.length) {
+            res.status(500).json({ error: "не удалось набрать 20 разных вопросов" })
+            return
+        }
 
         const { data: att, error: aErr } = await supabase
             .from("quiz_attempts")
