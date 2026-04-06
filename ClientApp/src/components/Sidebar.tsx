@@ -1,5 +1,5 @@
 import React from 'react';
-import {BarChart3, Home, LogIn, Medal, Shield, Terminal, Trophy} from 'lucide-react';
+import {BarChart3, BookOpen, Home, LogIn, Medal, Shield, Terminal, Trophy} from 'lucide-react';
 import type {Screen} from '../types';
 import {cn} from '../lib/utils';
 import type {ApiUser} from '../types';
@@ -15,6 +15,7 @@ export const Sidebar: React.FC<SidebarProps> = ({currentScreen, onScreenChange, 
     {id: 'home', label: 'Главная', icon: Home},
     {id: 'tasks', label: 'Задачи', icon: Trophy},
     {id: 'tournaments', label: 'Турниры', icon: Medal},
+    {id: 'quiz', label: 'Тест', icon: BookOpen},
     {id: 'attempts', label: 'Мои попытки', icon: BarChart3},
     {id: 'solve', label: 'Решение', icon: Terminal},
     {id: 'admin', label: 'Админка', icon: Shield},

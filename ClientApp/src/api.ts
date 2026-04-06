@@ -5,6 +5,11 @@ import type {
   ApiTask,
   ApiUser,
   NotificationItem,
+  QuizAdminAttemptDetail,
+  QuizAdminAttemptRow,
+  QuizAdminQuestionRow,
+  QuizQuestionPublic,
+  QuizResultItem,
   TournamentDetail,
   TournamentLeaderboardResponse,
   TournamentListItem,
@@ -329,5 +334,47 @@ export function markNotificationRead(notificationId: number, userId: number | st
     method: 'POST',
     body: JSON.stringify({userId}),
   });
+}
+
+export function startQuizSession(userId: number | string) {
+  return request<{attemptId: number; questions: QuizQuestionPublic[]}>('/api/quiz/start', {
+    method: 'POST',
+    body: JSON.stringify({userId}),
+  });
+}
+
+export function submitQuizAttempt(args: {
+  attemptId: number;
+  userId: number | string;
+  answers: Array<{questionId: number; chosenIndex: number}>;
+}) {
+  return request<{success: boolean}>(`/api/quiz/attempts/${args.attemptId}/submit`, {
+    method: 'POST',
+    body: JSON.stringify({userId: args.userId, answers: args.answers}),
+  });
+}
+
+export function getQuizResults(attemptId: number, userId: number | string) {
+  return request<{attemptId: number; score: number; total: number; items: QuizResultItem[]}>(
+    `/api/quiz/attempts/${attemptId}/results?userId=${encodeURIComponent(String(userId))}`,
+  );
+}
+
+export function getAdminQuizQuestions(adminUserId: number | string) {
+  return request<QuizAdminQuestionRow[]>(
+    `/api/admin/quiz/questions?userId=${encodeURIComponent(String(adminUserId))}`,
+  );
+}
+
+export function getAdminQuizAttempts(adminUserId: number | string) {
+  return request<QuizAdminAttemptRow[]>(
+    `/api/admin/quiz/attempts?userId=${encodeURIComponent(String(adminUserId))}`,
+  );
+}
+
+export function getAdminQuizAttemptDetail(attemptId: number, adminUserId: number | string) {
+  return request<QuizAdminAttemptDetail>(
+    `/api/admin/quiz/attempts/${attemptId}/detail?userId=${encodeURIComponent(String(adminUserId))}`,
+  );
 }
 

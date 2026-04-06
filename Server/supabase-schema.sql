@@ -302,3 +302,5 @@ create policy codearena_api_tournament_participants on public.tournament_partici
 
 drop policy if exists codearena_api_tournament_submissions on public.tournament_submissions;
 create policy codearena_api_tournament_submissions on public.tournament_submissions for all using (true) with check (true);
+
+-- Теоретический тест (банк вопросов + попытки): выполните также Server/supabase-quiz.sql

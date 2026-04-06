@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {AnimatePresence, motion} from 'motion/react';
 import {
   ArrowRight,
+  BookOpen,
   ChevronLeft,
   ChevronRight,
   Code2,
@@ -20,6 +21,7 @@ type HomeScreenProps = {
   user: ApiUser | null;
   onGoToTasks: () => void;
   onGoToTournaments: () => void;
+  onGoToQuiz: () => void;
 };
 
 const NEWS = [
@@ -61,7 +63,7 @@ function statusRu(s: string) {
   return 'Завершён';
 }
 
-export const HomeScreen: React.FC<HomeScreenProps> = ({user, onGoToTasks, onGoToTournaments}) => {
+export const HomeScreen: React.FC<HomeScreenProps> = ({user, onGoToTasks, onGoToTournaments, onGoToQuiz}) => {
   const [slide, setSlide] = useState(0);
   const [tournaments, setTournaments] = useState<TournamentListItem[]>([]);
   const [loadingT, setLoadingT] = useState(true);
@@ -126,6 +128,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({user, onGoToTasks, onGoTo
                 >
                   <Medal className="w-4 h-4 text-primary" />
                   Все турниры
+                </button>
+                <button
+                  type="button"
+                  onClick={onGoToQuiz}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-surface-container-highest border border-outline-variant/20 text-on-surface font-bold text-sm hover:border-primary/40 hover:bg-primary/5 transition-all"
+                >
+                  <BookOpen className="w-4 h-4 text-secondary" />
+                  Теоретический тест
                 </button>
               </div>
             </div>

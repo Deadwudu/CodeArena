@@ -1,11 +1,23 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {motion} from 'motion/react';
 import {ChevronDown, Loader2, Plus, Trash2} from 'lucide-react';
-import type {AdminUserStat, ApiAttempt, ApiAttemptWithUser, ApiTask, ApiUser} from '../types';
+import type {
+  AdminUserStat,
+  ApiAttempt,
+  ApiAttemptWithUser,
+  ApiTask,
+  ApiUser,
+  QuizAdminAttemptDetail,
+  QuizAdminAttemptRow,
+  QuizAdminQuestionRow,
+} from '../types';
 import {
   createTask,
   deleteTask,
   fillExpectFromReference,
+  getAdminQuizAttemptDetail,
+  getAdminQuizAttempts,
+  getAdminQuizQuestions,
   getAdminTaskAttempts,
   getAdminUserAttempts,
   getAdminUsersStats,
@@ -54,6 +66,13 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
   const [ taskAttemptsAll, setTaskAttemptsAll ] = useState<ApiAttemptWithUser[]>([]);
   const [ loadingTaskAttempts, setLoadingTaskAttempts ] = useState(false);
 
+  const [ quizQuestions, setQuizQuestions ] = useState<QuizAdminQuestionRow[]>([]);
+  const [ quizAttempts, setQuizAttempts ] = useState<QuizAdminAttemptRow[]>([]);
+  const [ quizDetailId, setQuizDetailId ] = useState<number | null>(null);
+  const [ quizDetail, setQuizDetail ] = useState<QuizAdminAttemptDetail | null>(null);
+  const [ loadingQuiz, setLoadingQuiz ] = useState(false);
+  const [ loadingQuizDetail, setLoadingQuizDetail ] = useState(false);
+
   const canAccess = user?.role === 'admin';
 
   const reloadTasks = useCallback(async () => {
@@ -82,6 +101,23 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
     }
   }, [ user, canAccess ]);
 
+  const reloadQuiz = useCallback(async () => {
+    if (!user || !canAccess) return;
+    setLoadingQuiz(true);
+    try {
+      const [ q, a ] = await Promise.all([
+        getAdminQuizQuestions(user.id),
+        getAdminQuizAttempts(user.id),
+      ]);
+      setQuizQuestions(q);
+      setQuizAttempts(a);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoadingQuiz(false);
+    }
+  }, [ user, canAccess ]);
+
   useEffect(() => {
     void reloadTasks();
   }, [ reloadTasks ]);
@@ -89,6 +125,32 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
   useEffect(() => {
     if (canAccess && user) void reloadStats();
   }, [ canAccess, user, reloadStats ]);
+
+  useEffect(() => {
+    if (canAccess && user) void reloadQuiz();
+  }, [ canAccess, user, reloadQuiz ]);
+
+  useEffect(() => {
+    if (!canAccess || !user || quizDetailId == null) {
+      setQuizDetail(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingQuizDetail(true);
+    getAdminQuizAttemptDetail(quizDetailId, user.id)
+      .then((d) => {
+        if (!cancelled) setQuizDetail(d);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingQuizDetail(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ canAccess, user, quizDetailId ]);
 
   const sortedTasks = useMemo(() => [ ...tasks ].sort((a, b) => a.title.localeCompare(b.title)), [ tasks ]);
 
@@ -306,6 +368,7 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
   const refreshAll = () => {
     void reloadTasks();
     void reloadStats();
+    void reloadQuiz();
     if (selectedUserKey && user) {
       setLoadingUserAttempts(true);
       getAdminUserAttempts(selectedUserKey, user.id)
@@ -604,6 +667,162 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                 )
               ) : null}
             </div>
+          </section>
+
+          <section className="bg-surface-container-low rounded-xl p-8 border border-outline-variant/5">
+            <h4 className="text-lg font-bold text-on-surface mb-1">Теоретический тест</h4>
+            <p className="text-xs text-on-surface-variant mb-4">
+              Банк вопросов в Supabase и прохождения пользователей (20 случайных вопросов за сессию).
+            </p>
+            {loadingQuiz ? (
+              <div className="flex items-center gap-2 text-on-surface-variant mb-4">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Загрузка…
+              </div>
+            ) : null}
+
+            <details className="rounded-xl border border-outline-variant/15 bg-surface-container mb-6">
+              <summary className="cursor-pointer px-4 py-3 font-bold text-sm text-on-surface hover:bg-surface-container-high/40">
+                Банк вопросов ({quizQuestions.length})
+              </summary>
+              <div className="max-h-80 overflow-y-auto custom-scrollbar border-t border-outline-variant/10 px-3 py-2 space-y-3">
+                {quizQuestions.length === 0 ? (
+                  <p className="text-sm text-on-surface-variant py-2">
+                    Нет вопросов — выполните SQL <code className="text-primary">supabase-quiz.sql</code> в Supabase.
+                  </p>
+                ) : (
+                  quizQuestions.map((row) => (
+                    <div key={row.id} className="text-xs border-b border-outline-variant/10 pb-3 last:border-0">
+                      <div className="font-bold text-on-surface mb-1">
+                        #{row.id}{' '}
+                        <span className="text-primary font-mono">верно: {['A', 'B', 'C', 'D'][row.correctIndex]}</span>
+                      </div>
+                      <p className="text-on-surface-variant mb-2">{row.text}</p>
+                      <ul className="space-y-0.5 text-on-surface-variant">
+                        {row.options.map((o, i) => (
+                          <li key={i}>
+                            <span className="text-on-surface/80">{['A', 'B', 'C', 'D'][i]}.</span> {o}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))
+                )}
+              </div>
+            </details>
+
+            <h5 className="text-sm font-bold text-on-surface mb-2">Прохождения</h5>
+            <div className="overflow-x-auto rounded-lg border border-outline-variant/10 mb-4">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-surface-container text-left text-on-surface-variant text-[10px] uppercase tracking-wider">
+                    <th className="p-3 font-bold">ID</th>
+                    <th className="p-3 font-bold">Пользователь</th>
+                    <th className="p-3 font-bold">Создано</th>
+                    <th className="p-3 font-bold">Статус</th>
+                    <th className="p-3 font-bold text-right">Балл</th>
+                    <th className="p-3 font-bold w-24" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {quizAttempts.map((a) => (
+                    <tr key={a.id} className="border-t border-outline-variant/10 text-on-surface">
+                      <td className="p-3 tabular-nums">{a.id}</td>
+                      <td className="p-3 font-medium">{a.username}</td>
+                      <td className="p-3 text-on-surface-variant text-xs whitespace-nowrap">
+                        {new Date(a.createdAt).toLocaleString()}
+                      </td>
+                      <td className="p-3 text-xs">{a.completedAt ? 'Завершено' : 'Черновик'}</td>
+                      <td className="p-3 text-right tabular-nums">
+                        {a.score != null ? `${a.score} / ${a.questionCount}` : '—'}
+                      </td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          onClick={() => setQuizDetailId(a.id)}
+                          className="text-xs font-bold text-primary hover:underline"
+                        >
+                          Ответы
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {quizAttempts.length === 0 && !loadingQuiz ? (
+                <p className="p-4 text-sm text-on-surface-variant">Пока нет попыток.</p>
+              ) : null}
+            </div>
+
+            {quizDetailId != null ? (
+              <div className="rounded-xl border border-outline-variant/15 bg-surface-container p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-bold text-on-surface">
+                    Попытка #{quizDetailId}
+                    {quizDetail ? ` — ${quizDetail.username}` : null}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuizDetailId(null);
+                      setQuizDetail(null);
+                    }}
+                    className="text-xs text-on-surface-variant hover:text-on-surface"
+                  >
+                    Закрыть
+                  </button>
+                </div>
+                {loadingQuizDetail ? (
+                  <Loader2 className="w-5 h-5 animate-spin text-on-surface-variant" />
+                ) : quizDetail && quizDetail.completed ? (
+                  <>
+                    <p className="text-sm text-on-surface-variant">
+                      Результат:{' '}
+                      <strong className="text-on-surface">
+                        {quizDetail.score ?? 0} / {quizDetail.total ?? 0}
+                      </strong>
+                    </p>
+                    <div className="max-h-96 overflow-y-auto custom-scrollbar space-y-3 pr-1">
+                      {quizDetail.items.map((item, i) => (
+                        <div
+                          key={item.id}
+                          className={`text-xs rounded-lg border p-3 ${
+                            item.isCorrect ? 'border-primary/30 bg-primary/5' : 'border-error/25 bg-error/5'
+                          }`}
+                        >
+                          <div className="font-bold text-on-surface mb-1">
+                            {i + 1}. {item.isCorrect ? '✓' : '✗'}
+                          </div>
+                          <p className="text-on-surface-variant mb-2">{item.text}</p>
+                          <ul className="space-y-1">
+                            {item.options.map((opt, idx) => {
+                              const ok = idx === item.correctIndex;
+                              const badPick = idx === item.chosenIndex && !item.isCorrect;
+                              return (
+                                <li
+                                  key={idx}
+                                  className={`rounded px-2 py-1 ${
+                                    ok
+                                      ? 'bg-primary/15 text-primary font-semibold'
+                                      : badPick
+                                        ? 'bg-error/15 text-error'
+                                        : 'text-on-surface-variant'
+                                  }`}
+                                >
+                                  {['A', 'B', 'C', 'D'][idx]}. {opt}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : quizDetail && !quizDetail.completed ? (
+                  <p className="text-sm text-on-surface-variant">Попытка не завершена — ответов нет.</p>
+                ) : null}
+              </div>
+            ) : null}
           </section>
         </>
       ) : null}

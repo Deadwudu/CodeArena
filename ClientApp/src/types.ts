@@ -1,4 +1,4 @@
-export type Screen = 'home' | 'tasks' | 'solve' | 'attempts' | 'admin' | 'auth' | 'tournaments';
+export type Screen = 'home' | 'tasks' | 'solve' | 'attempts' | 'admin' | 'auth' | 'tournaments' | 'quiz';
 
 export type TournamentStatus = 'pending' | 'live' | 'finished';
 
@@ -129,5 +129,49 @@ export interface UserStatsSummary {
   unsolved: number;
   totalTasks: number;
   totalSubmissions: number;
+}
+
+export interface QuizQuestionPublic {
+  id: number;
+  text: string;
+  options: string[];
+}
+
+export interface QuizResultItem {
+  id: number;
+  text: string;
+  options: string[];
+  correctIndex: number;
+  chosenIndex: number;
+  isCorrect: boolean;
+}
+
+export interface QuizAdminQuestionRow {
+  id: number;
+  text: string;
+  options: string[];
+  correctIndex: number;
+}
+
+export interface QuizAdminAttemptRow {
+  id: number;
+  userId: string;
+  username: string;
+  createdAt: string;
+  completedAt: string | null;
+  questionCount: number;
+  score: number | null;
+}
+
+export interface QuizAdminAttemptDetail {
+  attemptId: number;
+  userId: string;
+  username: string;
+  completed: boolean;
+  createdAt: string;
+  completedAt?: string;
+  score?: number;
+  total?: number;
+  items: QuizResultItem[];
 }
 

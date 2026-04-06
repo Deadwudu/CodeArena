@@ -10,6 +10,7 @@ import {AdminScreen} from './screens/AdminScreen';
 import {AuthScreen} from './screens/AuthScreen';
 import {TournamentsScreen} from './screens/TournamentsScreen';
 import {HomeScreen} from './screens/HomeScreen';
+import {QuizScreen} from './screens/QuizScreen';
 import {loadUser, saveUser} from './storage';
 
 export default function App() {
@@ -47,6 +48,7 @@ export default function App() {
             user={user}
             onGoToTasks={() => setCurrentScreen('tasks')}
             onGoToTournaments={() => setCurrentScreen('tournaments')}
+            onGoToQuiz={() => setCurrentScreen('quiz')}
           />
         );
       case 'tasks':
@@ -61,12 +63,15 @@ export default function App() {
         return <AuthScreen user={user} onUser={setUser} mode={authMode} onModeChange={setAuthMode} />;
       case 'tournaments':
         return <TournamentsScreen user={user} />;
+      case 'quiz':
+        return <QuizScreen user={user} />;
       default:
         return (
           <HomeScreen
             user={user}
             onGoToTasks={() => setCurrentScreen('tasks')}
             onGoToTournaments={() => setCurrentScreen('tournaments')}
+            onGoToQuiz={() => setCurrentScreen('quiz')}
           />
         );
     }

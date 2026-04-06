@@ -454,6 +454,393 @@ app.get("/api/user/stats", async (req, res) => {
     }
 })
 
+const QUIZ_QUESTIONS_PER_SESSION = 20
+
+function shuffleInPlace(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[arr[i], arr[j]] = [arr[j], arr[i]]
+    }
+    return arr
+}
+
+app.post("/api/quiz/start", async (req, res) => {
+    try {
+        const userId = req.body.userId ? String(req.body.userId).trim() : ""
+        if (!userId) {
+            res.status(400).json({ error: "userId обязателен" })
+            return
+        }
+        const { data: u, error: uErr } = await supabase.from("users").select("id").eq("id", userId).maybeSingle()
+        if (uErr) throw uErr
+        if (!u) {
+            res.status(404).json({ error: "пользователь не найден" })
+            return
+        }
+
+        await supabase.from("quiz_attempts").delete().eq("user_id", userId).is("completed_at", null)
+
+        const { data: allQ, error: qErr } = await supabase.from("quiz_questions").select("id")
+        if (qErr) throw qErr
+        const ids = (allQ ?? []).map((r) => r.id)
+        if (ids.length < QUIZ_QUESTIONS_PER_SESSION) {
+            res.status(503).json({ error: `В банке меньше ${QUIZ_QUESTIONS_PER_SESSION} вопросов. Выполните SQL supabase-quiz.sql в Supabase.` })
+            return
+        }
+        shuffleInPlace(ids)
+        const picked = ids.slice(0, QUIZ_QUESTIONS_PER_SESSION)
+
+        const { data: att, error: aErr } = await supabase
+            .from("quiz_attempts")
+            .insert({ user_id: userId, question_ids: picked })
+            .select("id")
+            .maybeSingle()
+        if (aErr) throw aErr
+
+        const { data: rows, error: rErr } = await supabase
+            .from("quiz_questions")
+            .select("id, question_text, option_a, option_b, option_c, option_d")
+            .in("id", picked)
+        if (rErr) throw rErr
+        const byId = new Map((rows ?? []).map((r) => [Number(r.id), r]))
+        const questions = picked.map((id) => {
+            const r = byId.get(Number(id))
+            if (!r) throw new Error("question row missing")
+            return {
+                id: Number(r.id),
+                text: r.question_text,
+                options: [r.option_a, r.option_b, r.option_c, r.option_d],
+            }
+        })
+
+        res.json({ attemptId: att.id, questions })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.post("/api/quiz/attempts/:attemptId/submit", async (req, res) => {
+    try {
+        const userId = req.body.userId ? String(req.body.userId).trim() : ""
+        if (!userId) {
+            res.status(400).json({ error: "userId обязателен" })
+            return
+        }
+        const attemptId = Number.parseInt(String(req.params.attemptId), 10)
+        if (!Number.isFinite(attemptId)) {
+            res.status(400).json({ error: "некорректный attemptId" })
+            return
+        }
+        const answersIn = req.body.answers
+        if (!Array.isArray(answersIn)) {
+            res.status(400).json({ error: "answers: массив { questionId, chosenIndex }" })
+            return
+        }
+
+        const { data: att, error: attErr } = await supabase
+            .from("quiz_attempts")
+            .select("id, user_id, question_ids, completed_at")
+            .eq("id", attemptId)
+            .maybeSingle()
+        if (attErr) throw attErr
+        if (!att || String(att.user_id) !== userId) {
+            res.status(403).json({ error: "нет доступа к этой попытке" })
+            return
+        }
+        if (att.completed_at) {
+            res.status(400).json({ error: "попытка уже отправлена" })
+            return
+        }
+        const expected = new Set((att.question_ids ?? []).map((x) => Number(x)))
+        if (answersIn.length !== expected.size) {
+            res.status(400).json({ error: `нужно ответить на все ${expected.size} вопросов` })
+            return
+        }
+
+        const rows = []
+        const seen = new Set()
+        for (const a of answersIn) {
+            const qid = Number(a?.questionId)
+            const chosen = Number(a?.chosenIndex)
+            if (!Number.isFinite(qid) || !expected.has(qid)) {
+                res.status(400).json({ error: "неверный questionId" })
+                return
+            }
+            if (!Number.isFinite(chosen) || chosen < 0 || chosen > 3) {
+                res.status(400).json({ error: "chosenIndex: 0..3" })
+                return
+            }
+            if (seen.has(qid)) {
+                res.status(400).json({ error: "дубликат questionId" })
+                return
+            }
+            seen.add(qid)
+            rows.push({ attempt_id: attemptId, question_id: qid, chosen_index: chosen })
+        }
+
+        const { error: insErr } = await supabase.from("quiz_attempt_answers").insert(rows)
+        if (insErr) throw insErr
+
+        const { error: upErr } = await supabase
+            .from("quiz_attempts")
+            .update({ completed_at: new Date().toISOString() })
+            .eq("id", attemptId)
+        if (upErr) throw upErr
+
+        res.json({ success: true })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.get("/api/quiz/attempts/:attemptId/results", async (req, res) => {
+    try {
+        const userId = req.query.userId ? String(req.query.userId).trim() : ""
+        if (!userId) {
+            res.status(400).json({ error: "userId обязателен" })
+            return
+        }
+        const attemptId = Number.parseInt(String(req.params.attemptId), 10)
+        if (!Number.isFinite(attemptId)) {
+            res.status(400).json({ error: "некорректный attemptId" })
+            return
+        }
+
+        const { data: att, error: attErr } = await supabase
+            .from("quiz_attempts")
+            .select("id, user_id, question_ids, completed_at")
+            .eq("id", attemptId)
+            .maybeSingle()
+        if (attErr) throw attErr
+        if (!att || String(att.user_id) !== userId) {
+            res.status(403).json({ error: "нет доступа" })
+            return
+        }
+        if (!att.completed_at) {
+            res.status(400).json({ error: "сначала завершите тест" })
+            return
+        }
+
+        const qids = (att.question_ids ?? []).map((x) => Number(x))
+        const { data: qs, error: qErr } = await supabase
+            .from("quiz_questions")
+            .select("id, question_text, option_a, option_b, option_c, option_d, correct_index")
+            .in("id", qids)
+        if (qErr) throw qErr
+        const { data: ans, error: aErr } = await supabase
+            .from("quiz_attempt_answers")
+            .select("question_id, chosen_index")
+            .eq("attempt_id", attemptId)
+        if (aErr) throw aErr
+
+        const byQ = new Map((qs ?? []).map((r) => [Number(r.id), r]))
+        const chosenMap = new Map((ans ?? []).map((r) => [Number(r.question_id), r.chosen_index]))
+
+        const items = []
+        for (const qid of qids) {
+            const q = byQ.get(qid)
+            if (!q) continue
+            const chosen = chosenMap.get(qid)
+            if (chosen === undefined) continue
+            const correctIdx = Number(q.correct_index)
+            items.push({
+                id: qid,
+                text: q.question_text,
+                options: [q.option_a, q.option_b, q.option_c, q.option_d],
+                correctIndex: correctIdx,
+                chosenIndex: chosen,
+                isCorrect: correctIdx === chosen,
+            })
+        }
+
+        const score = items.filter((i) => i.isCorrect).length
+        res.json({
+            attemptId,
+            score,
+            total: items.length,
+            items,
+        })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.get("/api/admin/quiz/questions", async (req, res) => {
+    try {
+        const adminId = req.query.userId ? String(req.query.userId).trim() : ""
+        if (!(await ensureAdmin(adminId))) {
+            res.status(403).json({ error: "no access" })
+            return
+        }
+        const { data, error } = await supabase
+            .from("quiz_questions")
+            .select("id, question_text, option_a, option_b, option_c, option_d, correct_index")
+            .order("id", { ascending: true })
+        if (error) throw error
+        res.json(
+            (data ?? []).map((r) => ({
+                id: Number(r.id),
+                text: r.question_text,
+                options: [r.option_a, r.option_b, r.option_c, r.option_d],
+                correctIndex: Number(r.correct_index),
+            })),
+        )
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.get("/api/admin/quiz/attempts", async (req, res) => {
+    try {
+        const adminId = req.query.userId ? String(req.query.userId).trim() : ""
+        if (!(await ensureAdmin(adminId))) {
+            res.status(403).json({ error: "no access" })
+            return
+        }
+        const { data: attempts, error: aErr } = await supabase
+            .from("quiz_attempts")
+            .select("id, user_id, question_ids, completed_at, created_at")
+            .order("created_at", { ascending: false })
+            .limit(200)
+        if (aErr) throw aErr
+        const userIds = [...new Set((attempts ?? []).map((a) => a.user_id).filter(Boolean))]
+        /** @type {Map<string, string>} */
+        const uname = new Map()
+        if (userIds.length) {
+            const { data: users } = await supabase.from("users").select("id, username").in("id", userIds)
+            for (const u of users ?? []) uname.set(String(u.id), u.username)
+        }
+
+        const attemptIds = (attempts ?? []).map((a) => a.id)
+        /** @type {Map<number, Map<number, number>>} */
+        const answersByAttempt = new Map()
+        if (attemptIds.length) {
+            const { data: allAns, error: ansErr } = await supabase
+                .from("quiz_attempt_answers")
+                .select("attempt_id, question_id, chosen_index")
+                .in("attempt_id", attemptIds)
+            if (ansErr) throw ansErr
+            for (const r of allAns ?? []) {
+                const aid = Number(r.attempt_id)
+                if (!answersByAttempt.has(aid)) answersByAttempt.set(aid, new Map())
+                answersByAttempt.get(aid).set(Number(r.question_id), Number(r.chosen_index))
+            }
+        }
+        const { data: allCorr, error: cErr } = await supabase.from("quiz_questions").select("id, correct_index")
+        if (cErr) throw cErr
+        const corrByQid = new Map((allCorr ?? []).map((q) => [Number(q.id), Number(q.correct_index)]))
+
+        const rows = (attempts ?? []).map((a) => {
+            let score = null
+            if (a.completed_at && (a.question_ids ?? []).length) {
+                const amap = answersByAttempt.get(Number(a.id))
+                let s = 0
+                if (amap) {
+                    for (const qid of a.question_ids) {
+                        const ch = amap.get(Number(qid))
+                        if (ch !== undefined && corrByQid.get(Number(qid)) === ch) s++
+                    }
+                }
+                score = s
+            }
+            return {
+                id: Number(a.id),
+                userId: String(a.user_id),
+                username: uname.get(String(a.user_id)) ?? "—",
+                createdAt: a.created_at,
+                completedAt: a.completed_at,
+                questionCount: (a.question_ids ?? []).length,
+                score,
+            }
+        })
+        res.json(rows)
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
+app.get("/api/admin/quiz/attempts/:attemptId/detail", async (req, res) => {
+    try {
+        const adminId = req.query.userId ? String(req.query.userId).trim() : ""
+        if (!(await ensureAdmin(adminId))) {
+            res.status(403).json({ error: "no access" })
+            return
+        }
+        const attemptId = Number.parseInt(String(req.params.attemptId), 10)
+        if (!Number.isFinite(attemptId)) {
+            res.status(400).json({ error: "некорректный attemptId" })
+            return
+        }
+        const { data: att, error: attErr } = await supabase
+            .from("quiz_attempts")
+            .select("id, user_id, question_ids, completed_at, created_at")
+            .eq("id", attemptId)
+            .maybeSingle()
+        if (attErr) throw attErr
+        if (!att) {
+            res.status(404).json({ error: "попытка не найдена" })
+            return
+        }
+        const { data: u } = await supabase.from("users").select("id, username").eq("id", att.user_id).maybeSingle()
+
+        if (!att.completed_at) {
+            res.json({
+                attemptId,
+                userId: String(att.user_id),
+                username: u?.username ?? "—",
+                completed: false,
+                createdAt: att.created_at,
+                items: [],
+            })
+            return
+        }
+
+        const qids = (att.question_ids ?? []).map((x) => Number(x))
+        const { data: qs, error: qErr } = await supabase
+            .from("quiz_questions")
+            .select("id, question_text, option_a, option_b, option_c, option_d, correct_index")
+            .in("id", qids)
+        if (qErr) throw qErr
+        const { data: ans, error: aErr } = await supabase
+            .from("quiz_attempt_answers")
+            .select("question_id, chosen_index")
+            .eq("attempt_id", attemptId)
+        if (aErr) throw aErr
+        const byQ = new Map((qs ?? []).map((r) => [Number(r.id), r]))
+        const chosenMap = new Map((ans ?? []).map((r) => [Number(r.question_id), r.chosen_index]))
+        const items = []
+        for (const qid of qids) {
+            const q = byQ.get(qid)
+            if (!q) continue
+            const chosen = chosenMap.get(qid)
+            if (chosen === undefined) continue
+            const correctIdx = Number(q.correct_index)
+            items.push({
+                id: qid,
+                text: q.question_text,
+                options: [q.option_a, q.option_b, q.option_c, q.option_d],
+                correctIndex: correctIdx,
+                chosenIndex: chosen,
+                isCorrect: correctIdx === chosen,
+            })
+        }
+        const score = items.filter((i) => i.isCorrect).length
+        res.json({
+            attemptId,
+            userId: String(att.user_id),
+            username: u?.username ?? "—",
+            completed: true,
+            createdAt: att.created_at,
+            completedAt: att.completed_at,
+            score,
+            total: items.length,
+            items,
+        })
+    } catch (e) {
+        res.status(500).json({ error: e?.message ?? "db error" })
+    }
+})
+
 app.get("/api/admin/users-stats", async (req, res) => {
     try {
         const adminId = req.query.userId ? String(req.query.userId).trim() : ""
