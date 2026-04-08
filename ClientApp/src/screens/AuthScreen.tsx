@@ -1,15 +1,17 @@
 import React, {useEffect, useState} from 'react';
 import {motion} from 'motion/react';
-import {Loader2, UserPlus} from 'lucide-react';
+import {Loader2, Moon, Sun, UserPlus} from 'lucide-react';
 import type {ApiUser, AuthMode, UserStatsSummary} from '../types';
 import {getUserStats, login, register} from '../api';
 import {cn} from '../lib/utils';
+import {useTheme} from '../theme-context';
 
-const CHART_PASS = '#81ecff';
-const CHART_FAILED = '#ff716c';
-const CHART_UNSOLVED = '#5c6370';
+const CHART_PASS = '#22d3ee';
+const CHART_FAILED = '#f87171';
 
 function ProfileStatsDonut({ stats }: { stats: UserStatsSummary }) {
+  const { theme } = useTheme();
+  const chartUnsolved = theme === 'light' ? '#94a3b8' : '#5c6370';
   const { pass, failed, unsolved, totalTasks } = stats;
   if (totalTasks === 0) {
     return (
@@ -22,7 +24,7 @@ function ProfileStatsDonut({ stats }: { stats: UserStatsSummary }) {
   const degFailed = (failed / totalTasks) * 360;
   const p1 = degPass;
   const p2 = p1 + degFailed;
-  const bg = `conic-gradient(${CHART_PASS} 0deg ${p1}deg, ${CHART_FAILED} ${p1}deg ${p2}deg, ${CHART_UNSOLVED} ${p2}deg 360deg)`;
+  const bg = `conic-gradient(${CHART_PASS} 0deg ${p1}deg, ${CHART_FAILED} ${p1}deg ${p2}deg, ${chartUnsolved} ${p2}deg 360deg)`;
 
   const pct = (n: number) => Math.round((n / totalTasks) * 100);
 
@@ -58,7 +60,7 @@ function ProfileStatsDonut({ stats }: { stats: UserStatsSummary }) {
         </li>
         <li className="flex items-center justify-between gap-4">
           <span className="flex items-center gap-2 text-on-surface">
-            <span className="w-3 h-3 rounded-full shrink-0" style={{ background: CHART_UNSOLVED }} />
+            <span className="w-3 h-3 rounded-full shrink-0" style={{ background: chartUnsolved }} />
             Нерешённые <span className="text-on-surface-variant text-xs">(нет отправок)</span>
           </span>
           <span className="font-mono font-bold text-on-surface">
@@ -76,6 +78,7 @@ export const AuthScreen: React.FC<{
   mode: AuthMode;
   onModeChange: (mode: AuthMode) => void;
 }> = ({user, onUser, mode, onModeChange}) => {
+  const { theme, setTheme } = useTheme();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -160,6 +163,49 @@ export const AuthScreen: React.FC<{
               Выйти
             </button>
           ) : null}
+        </div>
+
+        <div className="mt-6 p-4 md:p-5 rounded-xl bg-surface-container border border-outline-variant/10">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">Тема оформления</div>
+              <p className="text-sm text-on-surface mt-1">
+                Тёмная — как изначально в CodeArena. Светлая — светлый фон и контрастный текст.
+              </p>
+            </div>
+            <div
+              className="inline-flex rounded-xl p-1 bg-surface-container-high border border-outline-variant/15 shrink-0"
+              role="group"
+              aria-label="Тема"
+            >
+              <button
+                type="button"
+                onClick={() => setTheme('light')}
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition-all',
+                  theme === 'light'
+                    ? 'bg-surface-container text-on-surface shadow-sm border border-outline-variant/20'
+                    : 'text-on-surface-variant hover:text-on-surface',
+                )}
+              >
+                <Sun className="w-4 h-4" />
+                Светлая
+              </button>
+              <button
+                type="button"
+                onClick={() => setTheme('dark')}
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition-all',
+                  theme === 'dark'
+                    ? 'bg-surface-container text-on-surface shadow-sm border border-outline-variant/20'
+                    : 'text-on-surface-variant hover:text-on-surface',
+                )}
+              >
+                <Moon className="w-4 h-4" />
+                Тёмная
+              </button>
+            </div>
+          </div>
         </div>
 
         {user ? (

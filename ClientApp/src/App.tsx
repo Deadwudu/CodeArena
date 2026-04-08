@@ -12,6 +12,7 @@ import {TournamentsScreen} from './screens/TournamentsScreen';
 import {HomeScreen} from './screens/HomeScreen';
 import {QuizScreen} from './screens/QuizScreen';
 import {loadUser, saveUser} from './storage';
+import {ThemeProvider} from './theme-context';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
@@ -78,6 +79,7 @@ export default function App() {
   };
 
   return (
+    <ThemeProvider>
     <div className="min-h-screen bg-background text-on-surface font-body selection:bg-primary selection:text-on-primary-container">
       <Sidebar
         currentScreen={currentScreen}
@@ -113,5 +115,6 @@ export default function App() {
         user={user}
       />
     </div>
+    </ThemeProvider>
   );
 }

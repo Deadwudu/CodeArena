@@ -2,9 +2,10 @@ import React, {useMemo} from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import {javascript} from '@codemirror/lang-javascript';
 import {json} from '@codemirror/lang-json';
-import {vscodeDark} from '@uiw/codemirror-theme-vscode';
+import {vscodeDark, vscodeLight} from '@uiw/codemirror-theme-vscode';
 import {placeholder} from '@codemirror/view';
 import {cn} from '../lib/utils';
+import {useThemeOptional} from '../theme-context';
 
 export type CodeEditorLanguage = 'javascript' | 'json';
 
@@ -18,6 +19,9 @@ export const CodeEditor: React.FC<{
   className?: string;
   placeholder?: string;
 }> = ({value, onChange, readOnly, language = 'javascript', height = '220px', className, placeholder: placeholderText}) => {
+  const themeCtx = useThemeOptional();
+  const cmTheme = themeCtx?.theme === 'light' ? vscodeLight : vscodeDark;
+
   const extensions = useMemo(() => {
     const lang = language === 'json' ? json() : javascript();
     return placeholderText ? [lang, placeholder(placeholderText)] : [lang];
@@ -27,7 +31,7 @@ export const CodeEditor: React.FC<{
     <CodeMirror
       value={value}
       height={height}
-      theme={vscodeDark}
+      theme={cmTheme}
       extensions={extensions}
       onChange={onChange ?? (() => {})}
       editable={!readOnly}
