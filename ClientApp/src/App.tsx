@@ -11,15 +11,16 @@ import {AuthScreen} from './screens/AuthScreen';
 import {TournamentsScreen} from './screens/TournamentsScreen';
 import {HomeScreen} from './screens/HomeScreen';
 import {QuizScreen} from './screens/QuizScreen';
-import {loadUser, saveUser} from './storage';
+import {getInitialNavigation, loadUser, savePersistedNav, saveUser} from './storage';
 import {ThemeProvider} from './theme-context';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<Screen>('home');
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [navInit] = useState(() => getInitialNavigation());
+  const [currentScreen, setCurrentScreen] = useState<Screen>(navInit.screen);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(navInit.taskId);
   const [user, setUser] = useState<ApiUser | null>(null);
   const [search, setSearch] = useState('');
-  const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const [authMode, setAuthMode] = useState<AuthMode>(navInit.authMode);
 
   const goAuth = (mode: AuthMode) => {
     setAuthMode(mode);
@@ -33,6 +34,16 @@ export default function App() {
   useEffect(() => {
     saveUser(user);
   }, [user]);
+
+  useEffect(() => {
+    savePersistedNav({screen: currentScreen, taskId: selectedTaskId, authMode});
+  }, [currentScreen, selectedTaskId, authMode]);
+
+  useEffect(() => {
+    if (currentScreen === 'admin' && user != null && user.role !== 'admin') {
+      setCurrentScreen('home');
+    }
+  }, [user, currentScreen]);
 
   const openTask = (id: string) => {
     setSelectedTaskId(id);
