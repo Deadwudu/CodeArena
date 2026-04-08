@@ -211,7 +211,7 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
               <button
                 type="button"
                 onClick={() => void openLeaderboard(activeId)}
-                className="px-6 py-3 rounded-xl bg-primary text-on-primary-container font-bold transition-all duration-200 hover:brightness-110 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                className="px-6 py-3 rounded-xl bg-primary text-on-primary font-bold transition-all duration-200 hover:brightness-110 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
               >
                 Таблица результатов
               </button>
@@ -233,7 +233,7 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
             <button
               type="button"
               onClick={() => void openSummary(activeId)}
-              className="px-6 py-3 rounded-xl bg-primary text-on-primary-container font-bold transition-all duration-200 hover:brightness-110 hover:shadow-lg hover:shadow-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+              className="px-6 py-3 rounded-xl bg-primary text-on-primary font-bold transition-all duration-200 hover:brightness-110 hover:shadow-lg hover:shadow-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
             >
               Смотреть итоги
             </button>
@@ -260,7 +260,7 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                   setSubmitBusy(false);
                 }
               }}
-              className="px-6 py-3 rounded-xl bg-gradient-to-r from-primary to-primary-container text-on-primary-container font-bold transition-all duration-200 hover:brightness-110 hover:shadow-md disabled:opacity-50 disabled:hover:brightness-100 disabled:hover:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+              className="px-6 py-3 rounded-xl bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold transition-all duration-200 hover:brightness-110 hover:shadow-md disabled:opacity-50 disabled:hover:brightness-100 disabled:hover:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
             >
               Завершить турнир
             </button>
@@ -633,7 +633,7 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                 type="button"
                 disabled={createBusy}
                 onClick={() => void onCreateTournament()}
-                className="px-4 py-2 rounded-lg font-bold bg-primary text-on-primary-container transition-all duration-200 hover:brightness-110 hover:shadow-md disabled:opacity-50 disabled:hover:brightness-100"
+                className="px-4 py-2 rounded-lg font-bold bg-primary text-on-primary transition-all duration-200 hover:brightness-110 hover:shadow-md disabled:opacity-50 disabled:hover:brightness-100"
               >
                 {createBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Создать'}
               </button>
@@ -694,7 +694,7 @@ export const TournamentsScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
                     setGoLiveBusy(false);
                   }
                 }}
-                className="px-4 py-2 rounded-lg font-bold bg-primary text-on-primary-container"
+                className="px-4 py-2 rounded-lg font-bold bg-primary text-on-primary"
               >
                 {goLiveBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Запустить'}
               </button>

@@ -186,7 +186,7 @@ export const SolveScreen: React.FC<{
           <button
             type="button"
             onClick={run}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-primary-container text-on-primary-container font-bold shadow-lg shadow-primary/10 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold shadow-lg shadow-primary/10 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
             disabled={!canRun || runState.status === 'running'}
             title={!user ? 'Сначала войдите' : 'Проверить код и сохранить попытку'}
           >

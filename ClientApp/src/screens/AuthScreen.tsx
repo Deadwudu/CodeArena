@@ -262,7 +262,7 @@ export const AuthScreen: React.FC<{
                 }}
                 className={cn(
                   'py-3 px-4 rounded-lg text-sm font-headline font-bold transition-all',
-                  mode === 'login' ? 'bg-gradient-to-r from-primary to-primary-container text-on-primary-container shadow-lg shadow-primary/10' : 'text-on-surface-variant hover:text-on-surface',
+                  mode === 'login' ? 'bg-gradient-to-r from-primary to-primary-container text-on-primary shadow-lg shadow-primary/10' : 'text-on-surface-variant hover:text-on-surface',
                 )}
               >
                 Войти
@@ -314,7 +314,7 @@ export const AuthScreen: React.FC<{
                 type="button"
                 onClick={submitLogin}
                 disabled={loading || !username || !password}
-                className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-primary to-primary-container text-on-primary-container font-bold shadow-lg shadow-primary/10 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold shadow-lg shadow-primary/10 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 Войти

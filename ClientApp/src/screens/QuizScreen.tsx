@@ -90,7 +90,7 @@ export const QuizScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
           <button
             type="button"
             onClick={() => void start()}
-            className="inline-flex items-center gap-2 px-8 py-3 rounded-xl bg-primary text-on-primary-container font-bold shadow-md shadow-primary/20 hover:brightness-110 transition-all"
+            className="inline-flex items-center gap-2 px-8 py-3 rounded-xl bg-primary text-on-primary font-bold shadow-md shadow-primary/20 hover:brightness-110 transition-all"
           >
             Начать тест (20 вопросов)
           </button>
@@ -107,7 +107,7 @@ export const QuizScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
               type="button"
               disabled={!allAnswered}
               onClick={() => void submit()}
-              className="px-5 py-2 rounded-xl bg-primary text-on-primary-container text-sm font-bold disabled:opacity-40"
+              className="px-5 py-2 rounded-xl bg-primary text-on-primary text-sm font-bold disabled:opacity-40"
             >
               Отправить ответы
             </button>
@@ -148,7 +148,7 @@ export const QuizScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
               type="button"
               disabled={!allAnswered}
               onClick={() => void submit()}
-              className="px-8 py-3 rounded-xl bg-primary text-on-primary-container font-bold disabled:opacity-40"
+              className="px-8 py-3 rounded-xl bg-primary text-on-primary font-bold disabled:opacity-40"
             >
               Отправить все ответы
             </button>

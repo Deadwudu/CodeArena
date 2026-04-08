@@ -17,10 +17,13 @@
 
   --color-primary: #81ecff;
   --color-primary-container: #00e3fd;
+  /** Текст на сплошном primary и на градиенте primary → primary-container */
+  --color-on-primary: #004d57;
   --color-on-primary-container: #004d57;
 
   --color-secondary: #2ff801;
   --color-secondary-container: #106e00;
+  --color-on-secondary: #052e16;
   --color-on-secondary-container: #e7ffd9;
 
   --color-tertiary: #ff9f4a;
@@ -45,13 +48,17 @@
   --color-surface-bright: #ffffff;
   --color-surface-variant: #f1f5f9;
 
-  --color-primary: #0891b2;
-  --color-primary-container: #cffafe;
-  --color-on-primary-container: #164e63;
+  /** Достаточный контраст: белый текст на сплошном primary и на градиенте */
+  --color-primary: #0f766e;
+  --color-primary-container: #115e59;
+  --color-on-primary: #ffffff;
+  /** Текст на плашках primary-container (sidebar, иконки) */
+  --color-on-primary-container: #f0fdfa;
 
-  --color-secondary: #15803d;
-  --color-secondary-container: #dcfce7;
-  --color-on-secondary-container: #14532d;
+  --color-secondary: #166534;
+  --color-secondary-container: #14532d;
+  --color-on-secondary: #ffffff;
+  --color-on-secondary-container: #ecfdf5;
 
   --color-tertiary: #c2410c;
   --color-tertiary-container: #ffedd5;
@@ -59,7 +66,7 @@
   --color-error: #dc2626;
 
   --color-on-surface: #0f172a;
-  --color-on-surface-variant: #64748b;
+  --color-on-surface-variant: #475569;
   --color-outline-variant: #cbd5e1;
 }
 

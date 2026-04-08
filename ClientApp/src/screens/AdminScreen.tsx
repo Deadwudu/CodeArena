@@ -985,7 +985,7 @@ export const AdminScreen: React.FC<{user: ApiUser | null}> = ({user}) => {
               type="button"
               onClick={onCreate}
               disabled={!title.trim() || !description.trim()}
-              className="w-full md:w-auto px-8 py-3 rounded-xl bg-gradient-to-r from-primary to-primary-container text-on-primary-container font-bold shadow-lg shadow-primary/10 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full md:w-auto px-8 py-3 rounded-xl bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold shadow-lg shadow-primary/10 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Создать задачу с этой автопроверкой
             </button>

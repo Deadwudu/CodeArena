@@ -116,7 +116,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({user, onGoToTasks, onGoTo
                 <button
                   type="button"
                   onClick={onGoToTasks}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-on-primary-container font-bold text-sm shadow-md shadow-primary/20 hover:brightness-110 transition-all"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-on-primary font-bold text-sm shadow-md shadow-primary/20 hover:brightness-110 transition-all"
                 >
                   <Trophy className="w-4 h-4" />
                   Каталог задач

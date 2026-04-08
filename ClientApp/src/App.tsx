@@ -80,7 +80,7 @@ export default function App() {
 
   return (
     <ThemeProvider>
-    <div className="min-h-screen bg-background text-on-surface font-body selection:bg-primary selection:text-on-primary-container">
+    <div className="min-h-screen bg-background text-on-surface font-body selection:bg-primary selection:text-on-primary">
       <Sidebar
         currentScreen={currentScreen}
         onScreenChange={(s) => {

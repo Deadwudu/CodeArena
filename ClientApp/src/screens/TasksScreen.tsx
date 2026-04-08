@@ -68,7 +68,7 @@ export const TasksScreen: React.FC<{
             <button
               type="button"
               onClick={() => (filtered[0] ? onOpenTask(filtered[0].id) : null)}
-              className="px-6 py-3 bg-primary text-on-primary-container font-bold rounded-lg hover:brightness-110 transition-all flex items-center gap-2 disabled:opacity-50"
+              className="px-6 py-3 bg-primary text-on-primary font-bold rounded-lg hover:brightness-110 transition-all flex items-center gap-2 disabled:opacity-50"
               disabled={!filtered.length}
             >
               <Terminal className="w-4 h-4" />
