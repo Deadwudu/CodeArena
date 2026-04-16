@@ -1,6 +1,6 @@
 # CodeArena
 
-Монорепозиторий в **корне**: `ClientApp` (UI), `Server` (API), `client` (статический легаси-клиент).
+Монорепозиторий в **корне**: `ClientApp` (UI), `Server` (API).
 
 ## Фронтенд (Vercel)
 
